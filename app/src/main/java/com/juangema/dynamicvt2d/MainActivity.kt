@@ -1,5 +1,6 @@
 package com.juangema.dynamicvt2d
 
+import android.Manifest
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -92,6 +93,10 @@ object AvatarStore {
     fun setSize(context: Context, value: Float) { prefs(context).edit().putFloat("avatar_size", value).apply() }
     fun opacity(context: Context): Float = prefs(context).getFloat("avatar_opacity", 1f)
     fun setOpacity(context: Context, value: Float) { prefs(context).edit().putFloat("avatar_opacity", value).apply() }
+    fun blinkMode(context: Context): String = prefs(context).getString("blink_mode", "AUTO") ?: "AUTO"
+    fun setBlinkMode(context: Context, value: String) { prefs(context).edit().putString("blink_mode", value).apply() }
+    fun mouthMode(context: Context): String = prefs(context).getString("mouth_mode", "VOICE") ?: "VOICE"
+    fun setMouthMode(context: Context, value: String) { prefs(context).edit().putString("mouth_mode", value).apply() }
 }
 
 class MainActivity : ComponentActivity() {
@@ -142,6 +147,11 @@ private fun StudioScreen(
     var mouthOpen by remember { mutableStateOf(false) }
     var avatarSize by remember { mutableStateOf(AvatarStore.size(context)) }
     var avatarOpacity by remember { mutableStateOf(AvatarStore.opacity(context)) }
+    var blinkMode by remember { mutableStateOf(AvatarStore.blinkMode(context)) }
+    var mouthMode by remember { mutableStateOf(AvatarStore.mouthMode(context)) }
+    val audioPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        importMessage = if (granted) "Permiso de micrófono concedido. Reinicia LIVE para aplicar." else "Sin permiso de micrófono, la boca por voz no funcionará."
+    }
     var mouthMode by remember { mutableStateOf(context.getSharedPreferences("dynamic_vt2d", Context.MODE_PRIVATE).getString("mouth_mode", "voice") ?: "voice") }
     var blinkMode by remember { mutableStateOf(context.getSharedPreferences("dynamic_vt2d", Context.MODE_PRIVATE).getString("blink_mode", "auto") ?: "auto") }
     var importMessage by remember { mutableStateOf("Importa cuatro PNG transparentes por expresión.") }
