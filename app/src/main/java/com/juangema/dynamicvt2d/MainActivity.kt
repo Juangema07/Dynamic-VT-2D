@@ -91,6 +91,8 @@ object AvatarStore {
     fun setSize(context: Context, value: Float) { prefs(context).edit().putFloat("avatar_size", value).apply() }
     fun opacity(context: Context): Float = prefs(context).getFloat("avatar_opacity", 1f)
     fun setOpacity(context: Context, value: Float) { prefs(context).edit().putFloat("avatar_opacity", value).apply() }
+    fun rotation(context: Context): Float = prefs(context).getFloat("avatar_rotation", 0f)
+    fun setRotation(context: Context, value: Float) { prefs(context).edit().putFloat("avatar_rotation", value).apply() }
     fun blinkMode(context: Context): String = prefs(context).getString("blink_mode", "AUTO") ?: "AUTO"
     fun setBlinkMode(context: Context, value: String) { prefs(context).edit().putString("blink_mode", value).apply() }
     fun mouthMode(context: Context): String = prefs(context).getString("mouth_mode", "VOICE") ?: "VOICE"
