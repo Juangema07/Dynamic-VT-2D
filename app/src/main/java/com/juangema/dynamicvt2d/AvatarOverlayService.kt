@@ -115,10 +115,8 @@ class AvatarOverlayService : LifecycleService() {
     }
 
     private fun startTrackingForegroundIfNeeded() {
-        val mode = mouthMode()
-        val needsMic = mode == "voice" && checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
-        val needsCamera = (mode == "camera" || blinkMode() == "CAMERA") &&
-            checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
+        val needsMic = checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+        val needsCamera = checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
         if (!needsMic && !needsCamera) return
         val manager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
         if (Build.VERSION.SDK_INT >= 26) {
