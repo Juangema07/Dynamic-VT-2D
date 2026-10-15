@@ -1,11 +1,13 @@
 package com.juangema.dynamicvt2d
 
+import android.Manifest
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Bundle
 import android.provider.Settings
-import android.graphics.BitmapFactory
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -15,10 +17,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
@@ -89,9 +89,18 @@ object AvatarStore {
     fun setSize(context: Context, value: Float) { prefs(context).edit().putFloat("avatar_size", value).apply() }
     fun opacity(context: Context): Float = prefs(context).getFloat("avatar_opacity", 1f)
     fun setOpacity(context: Context, value: Float) { prefs(context).edit().putFloat("avatar_opacity", value).apply() }
+    fun rotation(context: Context): Float = prefs(context).getFloat("avatar_rotation", 0f)
+    fun setRotation(context: Context, value: Float) { prefs(context).edit().putFloat("avatar_rotation", value).apply() }
+    fun blinkMode(context: Context): String = prefs(context).getString("blink_mode", "AUTO") ?: "AUTO"
+    fun setBlinkMode(context: Context, value: String) { prefs(context).edit().putString("blink_mode", value).apply() }
+    fun mouthMode(context: Context): String = prefs(context).getString("mouth_mode", "VOICE") ?: "VOICE"
+    fun setMouthMode(context: Context, value: String) { prefs(context).edit().putString("mouth_mode", value).apply() }
 }
 
 class MainActivity : ComponentActivity() {
+    private val trackingPermissionLauncher = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
+        startOverlayService()
+    }
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
@@ -117,6 +126,17 @@ class MainActivity : ComponentActivity() {
             openOverlaySettings()
             return
         }
+        val missing = arrayOf(Manifest.permission.RECORD_AUDIO, Manifest.permission.CAMERA)
+            .filter { checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED }
+        if (missing.isNotEmpty()) {
+            trackingPermissionLauncher.launch(missing.toTypedArray())
+            return
+        }
+        startOverlayService()
+    }
+
+    private fun startOverlayService() {
+        if (!Settings.canDrawOverlays(this)) return
         startService(Intent(this, AvatarOverlayService::class.java))
     }
 }
@@ -136,11 +156,13 @@ private fun StudioScreen(
     var mouthOpen by remember { mutableStateOf(false) }
     var avatarSize by remember { mutableStateOf(AvatarStore.size(context)) }
     var avatarOpacity by remember { mutableStateOf(AvatarStore.opacity(context)) }
+    var avatarRotation by remember { mutableStateOf(AvatarStore.rotation(context)) }
+    var blinkMode by remember { mutableStateOf(AvatarStore.blinkMode(context)) }
+    var mouthMode by remember { mutableStateOf(AvatarStore.mouthMode(context)) }
     var importMessage by remember { mutableStateOf("Importa cuatro PNG transparentes por expresión.") }
 
     val selected = expressions.firstOrNull { it.name == selectedName } ?: expressions.firstOrNull()
-    val previewFrame = if (eyesClosed) 2 else 0
-    val frameIndex = previewFrame + if (mouthOpen) 1 else 0
+    val frameIndex = (if (eyesClosed) 2 else 0) + if (mouthOpen) 1 else 0
     val previewUri = selected?.frames?.getOrNull(frameIndex)
 
     val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
@@ -150,7 +172,7 @@ private fun StudioScreen(
             val name = expressionName.trim().ifBlank { "Neutro" }
             uris.forEach { uri ->
                 runCatching {
-                    context.contentResolver.takePersistableUriPermission(uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 }
             }
             val newExpression = AvatarExpression(name, uris.map { it.toString() })
@@ -196,12 +218,8 @@ private fun StudioScreen(
                 Text(selected?.name ?: "Sin expresión seleccionada", color = Color.White, fontWeight = FontWeight.SemiBold)
                 Text("Fotograma: " + (frameIndex + 1) + " de 4", color = Color(0xFFBFC7DA), fontSize = 12.sp)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(onClick = { eyesClosed = !eyesClosed }) {
-                        Text(if (eyesClosed) "Ojos cerrados" else "Ojos abiertos")
-                    }
-                    OutlinedButton(onClick = { mouthOpen = !mouthOpen }) {
-                        Text(if (mouthOpen) "Boca abierta" else "Boca cerrada")
-                    }
+                    OutlinedButton(onClick = { eyesClosed = !eyesClosed }) { Text(if (eyesClosed) "Ojos cerrados" else "Ojos abiertos") }
+                    OutlinedButton(onClick = { mouthOpen = !mouthOpen }) { Text(if (mouthOpen) "Boca abierta" else "Boca cerrada") }
                 }
             }
         }
@@ -217,7 +235,7 @@ private fun StudioScreen(
         Button(onClick = { imagePicker.launch(arrayOf("image/png", "image/*")) }, modifier = Modifier.fillMaxWidth()) {
             Text("Importar 4 imágenes PNG")
         }
-        Text("Selecciona en este orden: 1) ojos abiertos + boca cerrada, 2) ojos abiertos + boca abierta, 3) ojos cerrados + boca cerrada, 4) ojos cerrados + boca abierta.", color = Color(0xFFBFC7DA), fontSize = 12.sp)
+        Text("Orden: 1) ojos abiertos + boca cerrada, 2) ojos abiertos + boca abierta, 3) ojos cerrados + boca cerrada, 4) ojos cerrados + boca abierta.", color = Color(0xFFBFC7DA), fontSize = 12.sp)
         Text(importMessage, color = Color(0xFFB9E7C5), fontSize = 12.sp)
 
         Text("2. TUS EXPRESIONES (" + expressions.size + ")", color = Color(0xFF8FA7FF), fontWeight = FontWeight.Bold)
@@ -240,15 +258,39 @@ private fun StudioScreen(
                             AvatarStore.select(context, expression.name)
                             eyesClosed = false
                             mouthOpen = false
-                        }) {
-                            Text(if (expression.name == selectedName) "Seleccionada" else "Usar")
-                        }
+                        }) { Text(if (expression.name == selectedName) "Seleccionada" else "Usar") }
                     }
                 }
             }
         }
 
-        Text("3. AJUSTES DEL AVATAR FLOTANTE", color = Color(0xFF8FA7FF), fontWeight = FontWeight.Bold)
+        Text("3. ANIMACIÓN Y CONTROLES FLOTANTES", color = Color(0xFF8FA7FF), fontWeight = FontWeight.Bold)
+        Text("Movimiento de boca", color = Color.White, fontWeight = FontWeight.SemiBold)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(onClick = {
+                mouthMode = "VOICE"
+                AvatarStore.setMouthMode(context, mouthMode)
+            }) { Text(if (mouthMode == "VOICE") "✓ Voz" else "Voz") }
+            OutlinedButton(onClick = {
+                mouthMode = "CAMERA"
+                AvatarStore.setMouthMode(context, mouthMode)
+            }) { Text(if (mouthMode == "CAMERA") "✓ Cámara" else "Cámara") }
+        }
+        Text(if (mouthMode == "VOICE") "La boca responde al nivel de sonido del micrófono." else "La cámara frontal intenta detectar apertura de boca mediante seguimiento facial; puede variar según el dispositivo y la iluminación.", color = Color(0xFFBFC7DA), fontSize = 12.sp)
+
+        Text("Parpadeo", color = Color.White, fontWeight = FontWeight.SemiBold)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(onClick = {
+                blinkMode = "AUTO"
+                AvatarStore.setBlinkMode(context, blinkMode)
+            }) { Text(if (blinkMode == "AUTO") "✓ Automático" else "Automático") }
+            OutlinedButton(onClick = {
+                blinkMode = "CAMERA"
+                AvatarStore.setBlinkMode(context, blinkMode)
+            }) { Text(if (blinkMode == "CAMERA") "✓ Cámara" else "Cámara") }
+        }
+        Text(if (blinkMode == "AUTO") "Parpadeo aleatorio automático." else "La cámara frontal intenta detectar el estado de los ojos; la detección es experimental y puede fallar.", color = Color(0xFFBFC7DA), fontSize = 12.sp)
+
         Text("Tamaño: " + avatarSize.toInt() + " dp", color = Color.White)
         Slider(value = avatarSize, onValueChange = {
             avatarSize = it
@@ -259,12 +301,17 @@ private fun StudioScreen(
             avatarOpacity = it
             AvatarStore.setOpacity(context, it)
         }, valueRange = 0.2f..1f)
-        Text("El avatar flotante se puede arrastrar por la pantalla. Los ajustes se guardan en este teléfono.", color = Color(0xFFBFC7DA), fontSize = 12.sp)
+        Text("Rotación: " + avatarRotation.toInt() + "°", color = Color.White)
+        Slider(value = avatarRotation, onValueChange = {
+            avatarRotation = it
+            AvatarStore.setRotation(context, it)
+        }, valueRange = -180f..180f)
+        Text("Arrastra el avatar para moverlo. Tócalo para abrir los controles; activa el modo grabación desde el menú para ocultarlos. En modo grabación, un toque cambia de expresión y una pulsación larga sale del modo sin mostrar un menú durante la grabación.", color = Color(0xFFBFC7DA), fontSize = 12.sp)
         Button(onClick = onLive, modifier = Modifier.fillMaxWidth()) { Text("● LIVE — Mostrar avatar flotante") }
         OutlinedButton(onClick = onApply, modifier = Modifier.fillMaxWidth()) { Text("Aplicar ajustes al LIVE") }
         OutlinedButton(onClick = onStop, modifier = Modifier.fillMaxWidth()) { Text("Detener avatar flotante") }
         OutlinedButton(onClick = onPermission, modifier = Modifier.fillMaxWidth()) { Text("Permiso para mostrarse sobre otras apps") }
 
-        Text("Próximas funciones: detección de parpadeo por cámara, efectos animados avanzados y controles de movimiento. Todavía no están implementados en esta versión.", color = Color(0xFFBFC7DA), fontSize = 12.sp)
+        Text("La detección por cámara usa seguimiento facial experimental. La detección por voz mide el nivel de audio, no reconoce palabras. Los controles desaparecen en modo grabación; la orientación vertical y horizontal se adapta al girar el teléfono.", color = Color(0xFFBFC7DA), fontSize = 12.sp)
     }
 }
