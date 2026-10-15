@@ -179,7 +179,7 @@ class AvatarOverlayService : LifecycleService() {
                 runCatching { windowManager?.updateViewLayout(rootView, it) } }
         }
         rootView?.alpha = avatarOpacity
-        imageView?.rotation = AvatarStore.rotation(this)
+        rootView?.rotation = AvatarStore.rotation(this)
         buildMenu()
         renderFrame()
         handler.removeCallbacks(blinkRunnable)
@@ -217,6 +217,15 @@ class AvatarOverlayService : LifecycleService() {
         addAction("Parpadeo: automático / cámara") {
             prefs().edit().putString("blink_mode", if (blinkMode() == "AUTO") "CAMERA" else "AUTO").apply()
             restartTracking()
+        }
+        addAction("Tamaño +") { changeAvatarSize(12f) }
+        addAction("Tamaño −") { changeAvatarSize(-12f) }
+        addAction("Rotar −15°") { rotateAvatar(-15f) }
+        addAction("Rotar +15°") { rotateAvatar(15f) }
+        addAction("Opacidad: alternar") {
+            avatarOpacity = if (avatarOpacity > 0.7f) 0.55f else 1f
+            AvatarStore.setOpacity(this, avatarOpacity)
+            rootView?.alpha = avatarOpacity
         }
         addAction("Ocultar controles") { menuDismissed = true; hideMenu() }
         menuView = menu
@@ -325,6 +334,24 @@ class AvatarOverlayService : LifecycleService() {
         selectedFrames = expressions[next].frames
         blinkClosed = false; mouthOpen = false
         renderFrame()
+    }
+
+    private fun changeAvatarSize(delta: Float) {
+        val next = (AvatarStore.size(this) + delta).coerceIn(90f, 320f)
+        AvatarStore.setSize(this, next)
+        avatarSizePx = (next * resources.displayMetrics.density).toInt()
+        layoutParams?.let {
+            it.width = avatarSizePx
+            it.height = avatarSizePx
+            runCatching { windowManager?.updateViewLayout(rootView, it) }
+        }
+        updateMenuVisibility()
+    }
+
+    private fun rotateAvatar(delta: Float) {
+        avatarRotation = (avatarRotation + delta) % 360f
+        AvatarStore.setRotation(this, avatarRotation)
+        rootView?.rotation = avatarRotation
     }
 
     private fun restartTracking() {
