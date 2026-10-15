@@ -5,6 +5,9 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.provider.Settings
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.core.app.ActivityCompat
 import android.graphics.BitmapFactory
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -94,6 +97,9 @@ object AvatarStore {
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (android.os.Build.VERSION.SDK_INT >= 23 && checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.RECORD_AUDIO, Manifest.permission.CAMERA), 204)
+        }
         setContent {
             MaterialTheme {
                 Surface(modifier = Modifier.fillMaxSize(), color = Color(0xFF10131D)) {
@@ -136,6 +142,8 @@ private fun StudioScreen(
     var mouthOpen by remember { mutableStateOf(false) }
     var avatarSize by remember { mutableStateOf(AvatarStore.size(context)) }
     var avatarOpacity by remember { mutableStateOf(AvatarStore.opacity(context)) }
+    var mouthMode by remember { mutableStateOf(context.getSharedPreferences("dynamic_vt2d", Context.MODE_PRIVATE).getString("mouth_mode", "voice") ?: "voice") }
+    var blinkMode by remember { mutableStateOf(context.getSharedPreferences("dynamic_vt2d", Context.MODE_PRIVATE).getString("blink_mode", "auto") ?: "auto") }
     var importMessage by remember { mutableStateOf("Importa cuatro PNG transparentes por expresión.") }
 
     val selected = expressions.firstOrNull { it.name == selectedName } ?: expressions.firstOrNull()
@@ -248,7 +256,31 @@ private fun StudioScreen(
             }
         }
 
-        Text("3. AJUSTES DEL AVATAR FLOTANTE", color = Color(0xFF8FA7FF), fontWeight = FontWeight.Bold)
+        Text("3. ANIMACIÓN Y CONTROLES FLOTANTES", color = Color(0xFF8FA7FF), fontWeight = FontWeight.Bold)
+        Text("Movimiento de boca", color = Color.White, fontWeight = FontWeight.SemiBold)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(onClick = {
+                mouthMode = "voice"
+                context.getSharedPreferences("dynamic_vt2d", Context.MODE_PRIVATE).edit().putString("mouth_mode", mouthMode).apply()
+            }) { Text(if (mouthMode == "voice") "✓ Voz" else "Voz") }
+            OutlinedButton(onClick = {
+                mouthMode = "camera"
+                context.getSharedPreferences("dynamic_vt2d", Context.MODE_PRIVATE).edit().putString("mouth_mode", mouthMode).apply()
+            }) { Text(if (mouthMode == "camera") "✓ Cámara" else "Cámara") }
+        }
+        Text(if (mouthMode == "voice") "La boca responde al nivel de sonido del micrófono." else "Modo cámara seleccionado; el seguimiento facial aún es experimental y puede no detectar la boca.", color = Color(0xFFBFC7DA), fontSize = 12.sp)
+        Text("Parpadeo", color = Color.White, fontWeight = FontWeight.SemiBold)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(onClick = {
+                blinkMode = "auto"
+                context.getSharedPreferences("dynamic_vt2d", Context.MODE_PRIVATE).edit().putString("blink_mode", blinkMode).apply()
+            }) { Text(if (blinkMode == "auto") "✓ Automático" else "Automático") }
+            OutlinedButton(onClick = {
+                blinkMode = "camera"
+                context.getSharedPreferences("dynamic_vt2d", Context.MODE_PRIVATE).edit().putString("blink_mode", blinkMode).apply()
+            }) { Text(if (blinkMode == "camera") "✓ Cámara" else "Cámara") }
+        }
+        Text(if (blinkMode == "auto") "Parpadeo aleatorio automático." else "Modo cámara seleccionado; detección de parpadeo aún no está integrada.", color = Color(0xFFBFC7DA), fontSize = 12.sp)
         Text("Tamaño: " + avatarSize.toInt() + " dp", color = Color.White)
         Slider(value = avatarSize, onValueChange = {
             avatarSize = it
@@ -259,12 +291,12 @@ private fun StudioScreen(
             avatarOpacity = it
             AvatarStore.setOpacity(context, it)
         }, valueRange = 0.2f..1f)
-        Text("El avatar flotante se puede arrastrar por la pantalla. Los ajustes se guardan en este teléfono.", color = Color(0xFFBFC7DA), fontSize = 12.sp)
+        Text("El avatar se puede arrastrar. Tócalo para abrir sus controles; activa el modo de grabación desde ese menú para ocultarlos. En modo de grabación, los toques cambian la expresión sin mostrar menús.", color = Color(0xFFBFC7DA), fontSize = 12.sp)
         Button(onClick = onLive, modifier = Modifier.fillMaxWidth()) { Text("● LIVE — Mostrar avatar flotante") }
         OutlinedButton(onClick = onApply, modifier = Modifier.fillMaxWidth()) { Text("Aplicar ajustes al LIVE") }
         OutlinedButton(onClick = onStop, modifier = Modifier.fillMaxWidth()) { Text("Detener avatar flotante") }
         OutlinedButton(onClick = onPermission, modifier = Modifier.fillMaxWidth()) { Text("Permiso para mostrarse sobre otras apps") }
 
-        Text("Próximas funciones: detección de parpadeo por cámara, efectos animados avanzados y controles de movimiento. Todavía no están implementados en esta versión.", color = Color(0xFFBFC7DA), fontSize = 12.sp)
+        Text("Nota: la detección real por cámara queda pendiente. Los selectores están disponibles para probar el flujo; el modo de voz utiliza un detector básico de nivel de audio.", color = Color(0xFFBFC7DA), fontSize = 12.sp)
     }
 }
