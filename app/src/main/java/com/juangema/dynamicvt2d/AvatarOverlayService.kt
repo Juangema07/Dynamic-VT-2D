@@ -55,6 +55,7 @@ class AvatarOverlayService : LifecycleService() {
     private var mouthOpen = false
     private var avatarSizePx = 0
     private var avatarOpacity = 1f
+    private var avatarRotation = 0f
     private var downX = 0f
     private var downY = 0f
     private var startX = 0
@@ -138,6 +139,7 @@ class AvatarOverlayService : LifecycleService() {
         selectedFrames = expression?.frames ?: emptyList()
         avatarSizePx = (AvatarStore.size(this) * resources.displayMetrics.density).toInt()
         avatarOpacity = AvatarStore.opacity(this).coerceIn(0.2f, 1f)
+        avatarRotation = getSharedPreferences(PREFS, MODE_PRIVATE).getFloat("avatar_rotation", 0f)
         startTrackingForegroundIfNeeded()
 
         if (rootView == null) {
