@@ -23,7 +23,6 @@
         <service
             android:name=".AvatarOverlayService"
             android:exported="false"
-            android:foregroundServiceType="microphone"
-            android:configChanges="orientation|screenSize|keyboardHidden" />
+            android:foregroundServiceType="microphone" />
     </application>
 </manifest>
