@@ -69,15 +69,23 @@ class AvatarOverlayService : LifecycleService() {
             .setContourMode(FaceDetectorOptions.CONTOUR_MODE_ALL).build()
     )
     private var lastFaceState = false
+    private var menuDismissed = false
+    private var longPressTriggered = false
+    private val longPressRunnable = Runnable {
+        longPressTriggered = true
+        prefs().edit().putBoolean("recording_mode", !recordingMode()).apply()
+        menuDismissed = true
+        updateMenuVisibility()
+    }
 
     private fun prefs() = getSharedPreferences(PREFS, MODE_PRIVATE)
     private fun recordingMode() = prefs().getBoolean("recording_mode", false)
-    private fun mouthMode() = prefs().getString("mouth_mode", "voice") ?: "voice"
-    private fun blinkMode() = prefs().getString("blink_mode", "auto") ?: "auto"
+    private fun mouthMode() = (prefs().getString("mouth_mode", "VOICE") ?: "VOICE").uppercase()
+    private fun blinkMode() = (prefs().getString("blink_mode", "AUTO") ?: "AUTO").uppercase()
 
     private val blinkRunnable = object : Runnable {
         override fun run() {
-            if (blinkMode() == "auto") {
+            if (blinkMode() == "AUTO") {
                 blinkClosed = true
                 renderFrame()
                 handler.postDelayed({
@@ -109,7 +117,7 @@ class AvatarOverlayService : LifecycleService() {
     private fun startTrackingForegroundIfNeeded() {
         val mode = mouthMode()
         val needsMic = mode == "voice" && checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
-        val needsCamera = (mode == "camera" || blinkMode() == "camera") &&
+        val needsCamera = (mode == "camera" || blinkMode() == "CAMERA") &&
             checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
         if (!needsMic && !needsCamera) return
         val manager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
@@ -173,6 +181,7 @@ class AvatarOverlayService : LifecycleService() {
                 runCatching { windowManager?.updateViewLayout(rootView, it) } }
         }
         rootView?.alpha = avatarOpacity
+        imageView?.rotation = AvatarStore.rotation(this)
         buildMenu()
         renderFrame()
         handler.removeCallbacks(blinkRunnable)
@@ -204,14 +213,14 @@ class AvatarOverlayService : LifecycleService() {
             prefs().edit().putBoolean("recording_mode", !recordingMode()).apply()
         }
         addAction("Boca: voz / cámara") {
-            prefs().edit().putString("mouth_mode", if (mouthMode() == "voice") "camera" else "voice").apply()
+            prefs().edit().putString("mouth_mode", if (mouthMode() == "VOICE") "CAMERA" else "VOICE").apply()
             restartTracking()
         }
         addAction("Parpadeo: automático / cámara") {
-            prefs().edit().putString("blink_mode", if (blinkMode() == "auto") "camera" else "auto").apply()
+            prefs().edit().putString("blink_mode", if (blinkMode() == "AUTO") "CAMERA" else "AUTO").apply()
             restartTracking()
         }
-        addAction("Ocultar controles") { hideMenu() }
+        addAction("Ocultar controles") { menuDismissed = true; hideMenu() }
         menuView = menu
         val params = WindowManager.LayoutParams(
             (avatarSizePx * 1.2f).toInt().coerceAtLeast(240), WindowManager.LayoutParams.WRAP_CONTENT,
@@ -229,14 +238,14 @@ class AvatarOverlayService : LifecycleService() {
         val buttons = (0 until menu.childCount).mapNotNull { menu.getChildAt(it) as? Button }
         if (buttons.size >= 4) {
             buttons[1].text = if (recordingMode()) "Modo grabación: ACTIVADO" else "Modo grabación: desactivado"
-            buttons[2].text = "Boca: " + if (mouthMode() == "voice") "voz" else "cámara"
-            buttons[3].text = "Parpadeo: " + if (blinkMode() == "auto") "automático" else "cámara"
+            buttons[2].text = "Boca: " + if (mouthMode() == "VOICE") "voz" else "cámara"
+            buttons[3].text = "Parpadeo: " + if (blinkMode() == "AUTO") "automático" else "cámara"
         }
     }
 
     private fun updateMenuVisibility() {
         val menu = menuView ?: return
-        val show = !recordingMode()
+        val show = !recordingMode() && !menuDismissed
         if (show && menu.parent == null) {
             runCatching { windowManager?.addView(menu, menuParams) }
         }
@@ -262,10 +271,14 @@ class AvatarOverlayService : LifecycleService() {
         when (event.action) {
             MotionEvent.ACTION_DOWN -> {
                 downX = event.rawX; downY = event.rawY; startX = params.x; startY = params.y
+                longPressTriggered = false
+                handler.removeCallbacks(longPressRunnable)
+                handler.postDelayed(longPressRunnable, 650L)
                 return true
             }
             MotionEvent.ACTION_MOVE -> {
                 val dx = event.rawX - downX; val dy = event.rawY - downY
+                if (kotlin.math.abs(dx) > 18 || kotlin.math.abs(dy) > 18) handler.removeCallbacks(longPressRunnable)
                 if (!recordingMode()) {
                     params.x = startX + dx.toInt(); params.y = startY + dy.toInt()
                     runCatching { windowManager?.updateViewLayout(rootView, params) }
@@ -274,11 +287,18 @@ class AvatarOverlayService : LifecycleService() {
                 return true
             }
             MotionEvent.ACTION_UP -> {
+                handler.removeCallbacks(longPressRunnable)
                 val dx = event.rawX - downX; val dy = event.rawY - downY
-                if (kotlin.math.abs(dx) < 12 && kotlin.math.abs(dy) < 12) {
+                if (longPressTriggered) {
+                    menuDismissed = true
+                    updateMenuVisibility()
+                } else if (kotlin.math.abs(dx) < 12 && kotlin.math.abs(dy) < 12) {
                     if (recordingMode()) cycleExpression(1) else {
                         val menu = menuView
-                        if (menu?.visibility == View.VISIBLE) hideMenu() else updateMenuVisibility()
+                        if (menu?.visibility == View.VISIBLE) hideMenu() else {
+                            menuDismissed = false
+                            updateMenuVisibility()
+                        }
                     }
                 } else if (recordingMode()) {
                     if (kotlin.math.abs(dx) > kotlin.math.abs(dy)) cycleExpression(if (dx < 0) 1 else -1)
@@ -313,9 +333,9 @@ class AvatarOverlayService : LifecycleService() {
         stopAudioTracking()
         cameraProvider?.unbindAll()
         cameraProvider = null
-        val needCamera = mouthMode() == "camera" || blinkMode() == "camera"
+        val needCamera = mouthMode() == "CAMERA" || blinkMode() == "CAMERA"
         if (needCamera && checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) startCameraTracking()
-        if (mouthMode() == "voice" && checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) startAudioTracking()
+        if (mouthMode() == "VOICE" && checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) startAudioTracking()
         startTrackingForegroundIfNeeded()
     }
 
@@ -391,11 +411,11 @@ class AvatarOverlayService : LifecycleService() {
                         val upperY = upper.map { it.y }.average()
                         val lowerY = lower.map { it.y }.average()
                         val open = (lowerY - upperY) / face.boundingBox.height().coerceAtLeast(1) > 0.055
-                        if (mouthMode() == "camera" && open != mouthOpen) { mouthOpen = open; renderFrame() }
+                        if (mouthMode() == "CAMERA" && open != mouthOpen) { mouthOpen = open; renderFrame() }
                     }
                     val leftEye = face.getContour(com.google.mlkit.vision.face.FaceContour.LEFT_EYE)?.points
                     val rightEye = face.getContour(com.google.mlkit.vision.face.FaceContour.RIGHT_EYE)?.points
-                    if (blinkMode() == "camera" && leftEye != null && rightEye != null && leftEye.isNotEmpty() && rightEye.isNotEmpty()) {
+                    if (blinkMode() == "CAMERA" && leftEye != null && rightEye != null && leftEye.isNotEmpty() && rightEye.isNotEmpty()) {
                         val eyeSpan = (leftEye.maxOf { it.y } - leftEye.minOf { it.y } + rightEye.maxOf { it.y } - rightEye.minOf { it.y }) / 2f
                         val closed = eyeSpan / face.boundingBox.height().coerceAtLeast(1) < 0.018
                         if (closed != blinkClosed) { blinkClosed = closed; renderFrame() }
