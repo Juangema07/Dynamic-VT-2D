@@ -2,7 +2,7 @@ name: Android Debug APK
 
 on:
   push:
-    branches: [main]
+    branches: [main, "feature/stealth-floating-controls"]
   workflow_dispatch:
 
 permissions:
