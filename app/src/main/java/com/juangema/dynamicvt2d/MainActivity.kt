@@ -275,7 +275,7 @@ private fun StudioScreen(
                 AvatarStore.setMouthMode(context, mouthMode)
             }) { Text(if (mouthMode == "CAMERA") "✓ Cámara" else "Cámara") }
         }
-        Text(if (mouthMode == "VOICE") "La boca responde al nivel de sonido del micrófono." else "Modo cámara seleccionable; la detección real de apertura de boca aún es experimental y no está integrada.", color = Color(0xFFBFC7DA), fontSize = 12.sp)
+        Text(if (mouthMode == "VOICE") "La boca responde al nivel de sonido del micrófono." else "La cámara frontal intenta detectar apertura de boca mediante seguimiento facial; puede variar según el dispositivo y la iluminación.", color = Color(0xFFBFC7DA), fontSize = 12.sp)
 
         Text("Parpadeo", color = Color.White, fontWeight = FontWeight.SemiBold)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -288,7 +288,7 @@ private fun StudioScreen(
                 AvatarStore.setBlinkMode(context, blinkMode)
             }) { Text(if (blinkMode == "CAMERA") "✓ Cámara" else "Cámara") }
         }
-        Text(if (blinkMode == "AUTO") "Parpadeo aleatorio automático." else "Modo cámara seleccionable; el seguimiento ocular real todavía no está integrado.", color = Color(0xFFBFC7DA), fontSize = 12.sp)
+        Text(if (blinkMode == "AUTO") "Parpadeo aleatorio automático." else "La cámara frontal intenta detectar el estado de los ojos; la detección es experimental y puede fallar.", color = Color(0xFFBFC7DA), fontSize = 12.sp)
 
         Text("Tamaño: " + avatarSize.toInt() + " dp", color = Color.White)
         Slider(value = avatarSize, onValueChange = {
@@ -306,6 +306,6 @@ private fun StudioScreen(
         OutlinedButton(onClick = onStop, modifier = Modifier.fillMaxWidth()) { Text("Detener avatar flotante") }
         OutlinedButton(onClick = onPermission, modifier = Modifier.fillMaxWidth()) { Text("Permiso para mostrarse sobre otras apps") }
 
-        Text("Nota: la detección por cámara aparece como opción experimental, pero todavía no está implementada en esta compilación. La detección por voz usa el nivel de audio, no reconocimiento de palabras.", color = Color(0xFFBFC7DA), fontSize = 12.sp)
+        Text("La detección por cámara usa seguimiento facial experimental. La detección por voz mide el nivel de audio, no reconoce palabras. Los controles desaparecen en modo grabación; la orientación vertical y horizontal se adapta al girar el teléfono.", color = Color(0xFFBFC7DA), fontSize = 12.sp)
     }
 }
