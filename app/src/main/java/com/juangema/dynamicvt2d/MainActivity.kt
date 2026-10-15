@@ -1,12 +1,18 @@
 package com.juangema.dynamicvt2d
 
+import android.Manifest
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.os.Build
+import android.content.pm.PackageManager
+import android.widget.Toast
 import android.provider.Settings
 import android.graphics.BitmapFactory
 import androidx.activity.ComponentActivity
+import androidx.activity.result.ActivityResultLauncher
+import androidx.core.content.ContextCompat
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.setContent
@@ -92,8 +98,17 @@ object AvatarStore {
 }
 
 class MainActivity : ComponentActivity() {
+    private lateinit var runtimePermissionLauncher: ActivityResultLauncher<Array<String>>
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        runtimePermissionLauncher = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { grants ->
+            if (grants[Manifest.permission.CAMERA] == true && grants[Manifest.permission.RECORD_AUDIO] == true) {
+                activateLive()
+            } else {
+                Toast.makeText(this, "Concede los permisos de cámara y micrófono para activar el seguimiento en vivo y los comandos de voz.", Toast.LENGTH_LONG).show()
+            }
+        }
         setContent {
             MaterialTheme {
                 Surface(modifier = Modifier.fillMaxSize(), color = Color(0xFF10131D)) {
@@ -113,11 +128,25 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun activateLive() {
-        if (!Settings.canDrawOverlays(this)) {
-            openOverlaySettings()
+        val required = arrayOf(Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO)
+        val missing = required.filter {
+            ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
+        }
+        if (missing.isNotEmpty()) {
+            runtimePermissionLauncher.launch(missing.toTypedArray())
             return
         }
-        startService(Intent(this, AvatarOverlayService::class.java))
+        if (!Settings.canDrawOverlays(this)) {
+            openOverlaySettings()
+            Toast.makeText(this, "Activa el permiso de superposición y vuelve a pulsar LIVE.", Toast.LENGTH_LONG).show()
+            return
+        }
+        val intent = Intent(this, AvatarOverlayService::class.java)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            ContextCompat.startForegroundService(this, intent)
+        } else {
+            startService(intent)
+        }
     }
 }
 
@@ -265,6 +294,6 @@ private fun StudioScreen(
         OutlinedButton(onClick = onStop, modifier = Modifier.fillMaxWidth()) { Text("Detener avatar flotante") }
         OutlinedButton(onClick = onPermission, modifier = Modifier.fillMaxWidth()) { Text("Permiso para mostrarse sobre otras apps") }
 
-        Text("Próximas funciones: detección de parpadeo por cámara, efectos animados avanzados y controles de movimiento. Todavía no están implementados en esta versión.", color = Color(0xFFBFC7DA), fontSize = 12.sp)
+        Text("En LIVE: doble toque para abrir/cerrar el panel privado. La cámara frontal detecta ojos y movimiento de boca; el panel incluye comandos de voz, modo lista/circular y bloqueo.", color = Color(0xFFBFC7DA), fontSize = 12.sp)
     }
 }
