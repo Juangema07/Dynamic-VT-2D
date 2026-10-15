@@ -6,9 +6,6 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.provider.Settings
-import android.Manifest
-import android.content.pm.PackageManager
-import androidx.core.app.ActivityCompat
 import android.graphics.BitmapFactory
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -102,9 +99,6 @@ object AvatarStore {
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        if (android.os.Build.VERSION.SDK_INT >= 23 && checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-            ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.RECORD_AUDIO, Manifest.permission.CAMERA), 204)
-        }
         setContent {
             MaterialTheme {
                 Surface(modifier = Modifier.fillMaxSize(), color = Color(0xFF10131D)) {
@@ -149,12 +143,10 @@ private fun StudioScreen(
     var avatarOpacity by remember { mutableStateOf(AvatarStore.opacity(context)) }
     var blinkMode by remember { mutableStateOf(AvatarStore.blinkMode(context)) }
     var mouthMode by remember { mutableStateOf(AvatarStore.mouthMode(context)) }
+    var importMessage by remember { mutableStateOf("Importa cuatro PNG transparentes por expresión.") }
     val audioPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         importMessage = if (granted) "Permiso de micrófono concedido. Reinicia LIVE para aplicar." else "Sin permiso de micrófono, la boca por voz no funcionará."
     }
-    var mouthMode by remember { mutableStateOf(context.getSharedPreferences("dynamic_vt2d", Context.MODE_PRIVATE).getString("mouth_mode", "voice") ?: "voice") }
-    var blinkMode by remember { mutableStateOf(context.getSharedPreferences("dynamic_vt2d", Context.MODE_PRIVATE).getString("blink_mode", "auto") ?: "auto") }
-    var importMessage by remember { mutableStateOf("Importa cuatro PNG transparentes por expresión.") }
 
     val selected = expressions.firstOrNull { it.name == selectedName } ?: expressions.firstOrNull()
     val previewFrame = if (eyesClosed) 2 else 0
@@ -270,27 +262,35 @@ private fun StudioScreen(
         Text("Movimiento de boca", color = Color.White, fontWeight = FontWeight.SemiBold)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedButton(onClick = {
-                mouthMode = "voice"
-                context.getSharedPreferences("dynamic_vt2d", Context.MODE_PRIVATE).edit().putString("mouth_mode", mouthMode).apply()
-            }) { Text(if (mouthMode == "voice") "✓ Voz" else "Voz") }
+                mouthMode = "VOICE"
+                AvatarStore.setMouthMode(context, mouthMode)
+            }) { Text(if (mouthMode == "VOICE") "✓ Voz" else "Voz") }
             OutlinedButton(onClick = {
-                mouthMode = "camera"
-                context.getSharedPreferences("dynamic_vt2d", Context.MODE_PRIVATE).edit().putString("mouth_mode", mouthMode).apply()
-            }) { Text(if (mouthMode == "camera") "✓ Cámara" else "Cámara") }
+                mouthMode = "CAMERA"
+                AvatarStore.setMouthMode(context, mouthMode)
+                importMessage = "Modo cámara seleccionado; el seguimiento facial aún no está implementado."
+            }) { Text(if (mouthMode == "CAMERA") "✓ Cámara" else "Cámara") }
         }
-        Text(if (mouthMode == "voice") "La boca responde al nivel de sonido del micrófono." else "Modo cámara seleccionado; el seguimiento facial aún es experimental y puede no detectar la boca.", color = Color(0xFFBFC7DA), fontSize = 12.sp)
+        Text(if (mouthMode == "VOICE") "La boca responde al nivel de sonido del micrófono." else "Modo cámara seleccionado; el seguimiento facial todavía no funciona.", color = Color(0xFFBFC7DA), fontSize = 12.sp)
         Text("Parpadeo", color = Color.White, fontWeight = FontWeight.SemiBold)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedButton(onClick = {
-                blinkMode = "auto"
-                context.getSharedPreferences("dynamic_vt2d", Context.MODE_PRIVATE).edit().putString("blink_mode", blinkMode).apply()
-            }) { Text(if (blinkMode == "auto") "✓ Automático" else "Automático") }
+                blinkMode = "AUTO"
+                AvatarStore.setBlinkMode(context, blinkMode)
+            }) { Text(if (blinkMode == "AUTO") "✓ Automático" else "Automático") }
             OutlinedButton(onClick = {
-                blinkMode = "camera"
-                context.getSharedPreferences("dynamic_vt2d", Context.MODE_PRIVATE).edit().putString("blink_mode", blinkMode).apply()
-            }) { Text(if (blinkMode == "camera") "✓ Cámara" else "Cámara") }
+                blinkMode = "CAMERA"
+                AvatarStore.setBlinkMode(context, blinkMode)
+                importMessage = "Modo cámara seleccionado; la detección de parpadeo aún no está implementada."
+            }) { Text(if (blinkMode == "CAMERA") "✓ Cámara" else "Cámara") }
+            OutlinedButton(onClick = {
+                blinkMode = "OFF"
+                AvatarStore.setBlinkMode(context, blinkMode)
+            }) { Text(if (blinkMode == "OFF") "✓ Apagado" else "Apagado") }
         }
-        Text(if (blinkMode == "auto") "Parpadeo aleatorio automático." else "Modo cámara seleccionado; detección de parpadeo aún no está integrada.", color = Color(0xFFBFC7DA), fontSize = 12.sp)
+        OutlinedButton(onClick = { audioPermission.launch(Manifest.permission.RECORD_AUDIO) }, modifier = Modifier.fillMaxWidth()) {
+            Text("Permitir micrófono para animar la boca")
+        }
         Text("Tamaño: " + avatarSize.toInt() + " dp", color = Color.White)
         Slider(value = avatarSize, onValueChange = {
             avatarSize = it
