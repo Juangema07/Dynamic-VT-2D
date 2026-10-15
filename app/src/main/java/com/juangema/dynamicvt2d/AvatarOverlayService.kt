@@ -31,6 +31,7 @@ import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageProxy
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.core.content.ContextCompat
+import androidx.core.app.NotificationCompat
 import androidx.lifecycle.LifecycleService
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.face.FaceDetection
@@ -403,6 +404,21 @@ class AvatarOverlayService : LifecycleService() {
                 }
             }
             .addOnCompleteListener { proxy.close() }
+    }
+
+    private fun startVoiceForeground() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return
+        val manager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            manager.createNotificationChannel(NotificationChannel("dynamic_vt2d_mic", "Dynamic VT-2D", NotificationManager.IMPORTANCE_LOW))
+        }
+        val notification = NotificationCompat.Builder(this, "dynamic_vt2d_mic")
+            .setSmallIcon(android.R.drawable.ic_menu_view)
+            .setContentTitle("Dynamic VT-2D activo")
+            .setContentText("El micrófono detecta el nivel de voz para animar la boca.")
+            .setOngoing(true)
+            .build()
+        runCatching { startForeground(7321, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE) }
     }
 
     private fun renderFrame() {
