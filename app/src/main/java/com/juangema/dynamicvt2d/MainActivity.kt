@@ -1,7 +1,9 @@
 package com.juangema.dynamicvt2d
 
 import android.Manifest
+import android.Manifest
 import android.content.Context
+import android.content.pm.PackageManager
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.BitmapFactory
@@ -96,6 +98,9 @@ object AvatarStore {
 }
 
 class MainActivity : ComponentActivity() {
+    private val trackingPermissionLauncher = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
+        startOverlayService()
+    }
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         if (android.os.Build.VERSION.SDK_INT >= 23 &&
@@ -125,6 +130,17 @@ class MainActivity : ComponentActivity() {
             openOverlaySettings()
             return
         }
+        val missing = arrayOf(Manifest.permission.RECORD_AUDIO, Manifest.permission.CAMERA)
+            .filter { checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED }
+        if (missing.isNotEmpty()) {
+            trackingPermissionLauncher.launch(missing.toTypedArray())
+            return
+        }
+        startOverlayService()
+    }
+
+    private fun startOverlayService() {
+        if (!Settings.canDrawOverlays(this)) return
         startService(Intent(this, AvatarOverlayService::class.java))
     }
 }
