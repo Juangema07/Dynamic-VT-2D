@@ -224,15 +224,6 @@ class AvatarOverlayService : LifecycleService() {
             prefs().edit().putString("blink_mode", if (blinkMode() == "AUTO") "CAMERA" else "AUTO").apply()
             restartTracking()
         }
-        addAction("Tamaño +") { changeAvatarSize(12f) }
-        addAction("Tamaño −") { changeAvatarSize(-12f) }
-        addAction("Rotar −15°") { rotateAvatar(-15f) }
-        addAction("Rotar +15°") { rotateAvatar(15f) }
-        addAction("Opacidad: alternar") {
-            avatarOpacity = if (avatarOpacity > 0.7f) 0.55f else 1f
-            AvatarStore.setOpacity(this, avatarOpacity)
-            rootView?.alpha = avatarOpacity
-        }
         addAction("Ocultar controles") { menuDismissed = true; hideMenu() }
         menuView = menu
         val params = WindowManager.LayoutParams(
@@ -341,8 +332,9 @@ class AvatarOverlayService : LifecycleService() {
 
     private fun adjustRotation(delta: Float) {
         val rotation = ((AvatarStore.rotation(this) + delta + 180f) % 360f) - 180f
+        avatarRotation = rotation
         AvatarStore.setRotation(this, rotation)
-        imageView?.rotation = rotation
+        rootView?.rotation = rotation
     }
 
     private fun adjustOpacity(delta: Float) {
