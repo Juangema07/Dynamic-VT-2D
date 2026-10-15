@@ -11,13 +11,11 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.PixelFormat
-import android.graphics.PointF
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Build
 import android.os.Handler
-import android.os.IBinder
 import android.os.Looper
 import android.os.SystemClock
 import android.speech.RecognitionListener
@@ -646,7 +644,7 @@ class AvatarOverlayService : LifecycleService() {
         target.addView(label(
             "Cámara: ${if (cameraEnabled) "activa" else if (cameraStartInFlight) "iniciando" else "apagada"}\n" +
                 "Bloqueo: ${if (locked) "activado" else "desactivado"}\n" +
-                "El panel utiliza una ventana protegida para no salir en la captura de pantalla.",
+                "El panel está protegido contra capturas. La transparencia del avatar también se aplica a grabaciones externas por las reglas de Android.",
             11f,
             MUTED
         ))
@@ -875,10 +873,6 @@ class AvatarOverlayService : LifecycleService() {
         super.onDestroy()
     }
 
-    override fun onBind(intent: Intent): IBinder? {
-        super.onBind(intent)
-        return null
-    }
 
     companion object {
         const val ACTION_STOP = "com.juangema.dynamicvt2d.STOP_OVERLAY"
