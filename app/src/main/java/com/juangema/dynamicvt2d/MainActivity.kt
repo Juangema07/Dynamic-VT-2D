@@ -156,6 +156,7 @@ private fun StudioScreen(
     var mouthOpen by remember { mutableStateOf(false) }
     var avatarSize by remember { mutableStateOf(AvatarStore.size(context)) }
     var avatarOpacity by remember { mutableStateOf(AvatarStore.opacity(context)) }
+    var avatarRotation by remember { mutableStateOf(AvatarStore.rotation(context)) }
     var blinkMode by remember { mutableStateOf(AvatarStore.blinkMode(context)) }
     var mouthMode by remember { mutableStateOf(AvatarStore.mouthMode(context)) }
     var importMessage by remember { mutableStateOf("Importa cuatro PNG transparentes por expresión.") }
@@ -300,6 +301,11 @@ private fun StudioScreen(
             avatarOpacity = it
             AvatarStore.setOpacity(context, it)
         }, valueRange = 0.2f..1f)
+        Text("Rotación: " + avatarRotation.toInt() + "°", color = Color.White)
+        Slider(value = avatarRotation, onValueChange = {
+            avatarRotation = it
+            AvatarStore.setRotation(context, it)
+        }, valueRange = -180f..180f)
         Text("Arrastra el avatar para moverlo. Tócalo para abrir los controles; activa el modo grabación desde el menú para ocultarlos. En modo grabación, un toque cambia de expresión y una pulsación larga sale del modo sin mostrar un menú durante la grabación.", color = Color(0xFFBFC7DA), fontSize = 12.sp)
         Button(onClick = onLive, modifier = Modifier.fillMaxWidth()) { Text("● LIVE — Mostrar avatar flotante") }
         OutlinedButton(onClick = onApply, modifier = Modifier.fillMaxWidth()) { Text("Aplicar ajustes al LIVE") }
