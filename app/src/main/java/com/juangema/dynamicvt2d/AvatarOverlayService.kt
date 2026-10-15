@@ -207,6 +207,12 @@ class AvatarOverlayService : LifecycleService() {
             menu.addView(button, LinearLayout.LayoutParams(-1, -2))
         }
         addAction("Siguiente expresión") { cycleExpression(1) }
+        addAction("Tamaño +") { adjustSize(12f) }
+        addAction("Tamaño −") { adjustSize(-12f) }
+        addAction("Rotar +15°") { adjustRotation(15f) }
+        addAction("Rotar −15°") { adjustRotation(-15f) }
+        addAction("Opacidad +") { adjustOpacity(0.1f) }
+        addAction("Opacidad −") { adjustOpacity(-0.1f) }
         addAction("Modo grabación: activar/desactivar") {
             prefs().edit().putBoolean("recording_mode", !recordingMode()).apply()
         }
@@ -243,10 +249,10 @@ class AvatarOverlayService : LifecycleService() {
     private fun updateMenuLabels() {
         val menu = menuView ?: return
         val buttons = (0 until menu.childCount).mapNotNull { menu.getChildAt(it) as? Button }
-        if (buttons.size >= 4) {
-            buttons[1].text = if (recordingMode()) "Modo grabación: ACTIVADO" else "Modo grabación: desactivado"
-            buttons[2].text = "Boca: " + if (mouthMode() == "VOICE") "voz" else "cámara"
-            buttons[3].text = "Parpadeo: " + if (blinkMode() == "AUTO") "automático" else "cámara"
+        if (buttons.size >= 10) {
+            buttons[7].text = if (recordingMode()) "Modo grabación: ACTIVADO" else "Modo grabación: desactivado"
+            buttons[8].text = "Boca: " + if (mouthMode() == "VOICE") "voz" else "cámara"
+            buttons[9].text = "Parpadeo: " + if (blinkMode() == "AUTO") "automático" else "cámara"
         }
     }
 
@@ -323,6 +329,26 @@ class AvatarOverlayService : LifecycleService() {
             }
         }
         return false
+    }
+
+    private fun adjustSize(delta: Float) {
+        val size = (AvatarStore.size(this) + delta).coerceIn(90f, 320f)
+        AvatarStore.setSize(this, size)
+        avatarSizePx = (size * resources.displayMetrics.density).toInt()
+        layoutParams?.let { it.width = avatarSizePx; it.height = avatarSizePx; runCatching { windowManager?.updateViewLayout(rootView, it) } }
+        updateMenuVisibility()
+    }
+
+    private fun adjustRotation(delta: Float) {
+        val rotation = ((AvatarStore.rotation(this) + delta + 180f) % 360f) - 180f
+        AvatarStore.setRotation(this, rotation)
+        imageView?.rotation = rotation
+    }
+
+    private fun adjustOpacity(delta: Float) {
+        avatarOpacity = (AvatarStore.opacity(this) + delta).coerceIn(0.2f, 1f)
+        AvatarStore.setOpacity(this, avatarOpacity)
+        rootView?.alpha = avatarOpacity
     }
 
     private fun cycleExpression(direction: Int) {
