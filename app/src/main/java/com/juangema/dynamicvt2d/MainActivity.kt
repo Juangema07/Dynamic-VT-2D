@@ -3,10 +3,11 @@ package com.juangema.dynamicvt2d
 import android.Manifest
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Bundle
 import android.provider.Settings
-import android.graphics.BitmapFactory
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -16,10 +17,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
@@ -99,6 +98,10 @@ object AvatarStore {
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (android.os.Build.VERSION.SDK_INT >= 23 &&
+            checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), 204)
+        }
         setContent {
             MaterialTheme {
                 Surface(modifier = Modifier.fillMaxSize(), color = Color(0xFF10131D)) {
@@ -144,13 +147,9 @@ private fun StudioScreen(
     var blinkMode by remember { mutableStateOf(AvatarStore.blinkMode(context)) }
     var mouthMode by remember { mutableStateOf(AvatarStore.mouthMode(context)) }
     var importMessage by remember { mutableStateOf("Importa cuatro PNG transparentes por expresión.") }
-    val audioPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        importMessage = if (granted) "Permiso de micrófono concedido. Reinicia LIVE para aplicar." else "Sin permiso de micrófono, la boca por voz no funcionará."
-    }
 
     val selected = expressions.firstOrNull { it.name == selectedName } ?: expressions.firstOrNull()
-    val previewFrame = if (eyesClosed) 2 else 0
-    val frameIndex = previewFrame + if (mouthOpen) 1 else 0
+    val frameIndex = (if (eyesClosed) 2 else 0) + if (mouthOpen) 1 else 0
     val previewUri = selected?.frames?.getOrNull(frameIndex)
 
     val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
@@ -160,7 +159,7 @@ private fun StudioScreen(
             val name = expressionName.trim().ifBlank { "Neutro" }
             uris.forEach { uri ->
                 runCatching {
-                    context.contentResolver.takePersistableUriPermission(uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 }
             }
             val newExpression = AvatarExpression(name, uris.map { it.toString() })
@@ -206,12 +205,8 @@ private fun StudioScreen(
                 Text(selected?.name ?: "Sin expresión seleccionada", color = Color.White, fontWeight = FontWeight.SemiBold)
                 Text("Fotograma: " + (frameIndex + 1) + " de 4", color = Color(0xFFBFC7DA), fontSize = 12.sp)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(onClick = { eyesClosed = !eyesClosed }) {
-                        Text(if (eyesClosed) "Ojos cerrados" else "Ojos abiertos")
-                    }
-                    OutlinedButton(onClick = { mouthOpen = !mouthOpen }) {
-                        Text(if (mouthOpen) "Boca abierta" else "Boca cerrada")
-                    }
+                    OutlinedButton(onClick = { eyesClosed = !eyesClosed }) { Text(if (eyesClosed) "Ojos cerrados" else "Ojos abiertos") }
+                    OutlinedButton(onClick = { mouthOpen = !mouthOpen }) { Text(if (mouthOpen) "Boca abierta" else "Boca cerrada") }
                 }
             }
         }
@@ -227,7 +222,7 @@ private fun StudioScreen(
         Button(onClick = { imagePicker.launch(arrayOf("image/png", "image/*")) }, modifier = Modifier.fillMaxWidth()) {
             Text("Importar 4 imágenes PNG")
         }
-        Text("Selecciona en este orden: 1) ojos abiertos + boca cerrada, 2) ojos abiertos + boca abierta, 3) ojos cerrados + boca cerrada, 4) ojos cerrados + boca abierta.", color = Color(0xFFBFC7DA), fontSize = 12.sp)
+        Text("Orden: 1) ojos abiertos + boca cerrada, 2) ojos abiertos + boca abierta, 3) ojos cerrados + boca cerrada, 4) ojos cerrados + boca abierta.", color = Color(0xFFBFC7DA), fontSize = 12.sp)
         Text(importMessage, color = Color(0xFFB9E7C5), fontSize = 12.sp)
 
         Text("2. TUS EXPRESIONES (" + expressions.size + ")", color = Color(0xFF8FA7FF), fontWeight = FontWeight.Bold)
@@ -250,9 +245,7 @@ private fun StudioScreen(
                             AvatarStore.select(context, expression.name)
                             eyesClosed = false
                             mouthOpen = false
-                        }) {
-                            Text(if (expression.name == selectedName) "Seleccionada" else "Usar")
-                        }
+                        }) { Text(if (expression.name == selectedName) "Seleccionada" else "Usar") }
                     }
                 }
             }
@@ -268,10 +261,10 @@ private fun StudioScreen(
             OutlinedButton(onClick = {
                 mouthMode = "CAMERA"
                 AvatarStore.setMouthMode(context, mouthMode)
-                importMessage = "Modo cámara seleccionado; el seguimiento facial aún no está implementado."
             }) { Text(if (mouthMode == "CAMERA") "✓ Cámara" else "Cámara") }
         }
-        Text(if (mouthMode == "VOICE") "La boca responde al nivel de sonido del micrófono." else "Modo cámara seleccionado; el seguimiento facial todavía no funciona.", color = Color(0xFFBFC7DA), fontSize = 12.sp)
+        Text(if (mouthMode == "VOICE") "La boca responde al nivel de sonido del micrófono." else "Modo cámara seleccionable; la detección real de apertura de boca aún es experimental y no está integrada.", color = Color(0xFFBFC7DA), fontSize = 12.sp)
+
         Text("Parpadeo", color = Color.White, fontWeight = FontWeight.SemiBold)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedButton(onClick = {
@@ -281,16 +274,10 @@ private fun StudioScreen(
             OutlinedButton(onClick = {
                 blinkMode = "CAMERA"
                 AvatarStore.setBlinkMode(context, blinkMode)
-                importMessage = "Modo cámara seleccionado; la detección de parpadeo aún no está implementada."
             }) { Text(if (blinkMode == "CAMERA") "✓ Cámara" else "Cámara") }
-            OutlinedButton(onClick = {
-                blinkMode = "OFF"
-                AvatarStore.setBlinkMode(context, blinkMode)
-            }) { Text(if (blinkMode == "OFF") "✓ Apagado" else "Apagado") }
         }
-        OutlinedButton(onClick = { audioPermission.launch(Manifest.permission.RECORD_AUDIO) }, modifier = Modifier.fillMaxWidth()) {
-            Text("Permitir micrófono para animar la boca")
-        }
+        Text(if (blinkMode == "AUTO") "Parpadeo aleatorio automático." else "Modo cámara seleccionable; el seguimiento ocular real todavía no está integrado.", color = Color(0xFFBFC7DA), fontSize = 12.sp)
+
         Text("Tamaño: " + avatarSize.toInt() + " dp", color = Color.White)
         Slider(value = avatarSize, onValueChange = {
             avatarSize = it
@@ -301,12 +288,12 @@ private fun StudioScreen(
             avatarOpacity = it
             AvatarStore.setOpacity(context, it)
         }, valueRange = 0.2f..1f)
-        Text("El avatar se puede arrastrar. Tócalo para abrir sus controles; activa el modo de grabación desde ese menú para ocultarlos. En modo de grabación, los toques cambian la expresión sin mostrar menús.", color = Color(0xFFBFC7DA), fontSize = 12.sp)
+        Text("Arrastra el avatar para moverlo. Tócalo para abrir los controles; activa el modo grabación desde el menú para ocultarlos. En modo grabación, un toque cambia de expresión y una pulsación larga sale del modo sin mostrar un menú durante la grabación.", color = Color(0xFFBFC7DA), fontSize = 12.sp)
         Button(onClick = onLive, modifier = Modifier.fillMaxWidth()) { Text("● LIVE — Mostrar avatar flotante") }
         OutlinedButton(onClick = onApply, modifier = Modifier.fillMaxWidth()) { Text("Aplicar ajustes al LIVE") }
         OutlinedButton(onClick = onStop, modifier = Modifier.fillMaxWidth()) { Text("Detener avatar flotante") }
         OutlinedButton(onClick = onPermission, modifier = Modifier.fillMaxWidth()) { Text("Permiso para mostrarse sobre otras apps") }
 
-        Text("Nota: la detección real por cámara queda pendiente. Los selectores están disponibles para probar el flujo; el modo de voz utiliza un detector básico de nivel de audio.", color = Color(0xFFBFC7DA), fontSize = 12.sp)
+        Text("Nota: la detección por cámara aparece como opción experimental, pero todavía no está implementada en esta compilación. La detección por voz usa el nivel de audio, no reconocimiento de palabras.", color = Color(0xFFBFC7DA), fontSize = 12.sp)
     }
 }
