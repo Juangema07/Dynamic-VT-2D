@@ -13,7 +13,7 @@ Crear una aplicación Android VTuber 2D que permita usar un avatar propio sobre 
 3. Al pulsar **LIVE**, Android solicita los permisos necesarios y aparece el avatar flotante.
 4. El avatar se puede mover y mantener en una posición segura al cambiar orientación.
 5. Un menú de control queda disponible para el usuario, con dos presentaciones: lista y radial/circular.
-6. Durante una grabación iniciada desde la app, los controles se ocultan de la salida grabada y se restauran al terminar, siempre que la arquitectura de captura lo permita sin artefactos.
+6. Durante la grabación iniciada desde la app, los controles de grabación están disponibles en el estudio. La versión inicial captura la pantalla compuesta; la exclusión selectiva del panel flotante sin ocultarlo localmente es un requisito pendiente, no una capacidad ya garantizada.
 7. El video se guarda como MP4 en la galería y el usuario recibe un estado claro si se cancela un permiso o falla la grabación.
 
 ## 3. Avatar y expresiones
@@ -62,7 +62,7 @@ Dos modos visuales seleccionables:
 - Iniciar captura solo después del consentimiento explícito del diálogo del sistema Android.
 - Usar un servicio foreground con el tipo y permisos exigidos por la versión de Android.
 - Grabar MP4, publicar el archivo mediante MediaStore y mostrar confirmación/ruta al terminar.
-- Controles de iniciar, pausar/reanudar y detener; mostrar estado y errores.
+- Controles de iniciar y detener; mostrar estado y errores. Pausar/reanudar sigue pendiente.
 - Manejar rechazo de permisos, revocación de captura, rotación, interrupciones, falta de espacio y cierre del servicio.
 - Liberar MediaProjection, VirtualDisplay, encoder, recorder y recursos en todos los caminos de salida.
 - No pedir permiso de almacenamiento amplio cuando MediaStore resuelve la escritura.
@@ -100,4 +100,4 @@ Para que el avatar se vea opaco en el MP4 aunque esté translúcido en el teléf
 
 ## 9. Estado y criterio de finalización
 
-El código y la compilación automatizada pueden verificar estructura y compilación, pero no sustituyen las pruebas de cámara, voz, superposiciones ni calidad de captura en hardware real. Cada función debe etiquetarse como **implementada**, **compila**, **probada en dispositivo** o **pendiente**; son niveles distintos.
+El código de grabación integrada ahora existe para capturar pantalla a MP4 con MediaProjection en Android 10 o posterior; aún requiere prueba en teléfono físico. La compilación automatizada puede verificar estructura y compilación, pero no sustituye pruebas de cámara, voz, superposiciones ni calidad de captura en hardware real. La grabación actual no excluye el menú selectivamente ni genera una capa de avatar opaca independiente: ambas cosas siguen pendientes. Cada función debe etiquetarse como **implementada**, **compila**, **probada en dispositivo** o **pendiente**; son niveles distintos.
