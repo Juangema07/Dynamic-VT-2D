@@ -65,7 +65,7 @@ class AvatarOverlayService : LifecycleService() {
     private var fallbackView: TextView? = null
     private var avatarParams: WindowManager.LayoutParams? = null
 
-    private var menuView: LinearLayout? = null
+    private var menuView: FrameLayout? = null
     private var menuContent: LinearLayout? = null
     private var menuParams: WindowManager.LayoutParams? = null
     private var menuVisible = false
@@ -485,73 +485,69 @@ class AvatarOverlayService : LifecycleService() {
     private fun showMenu() {
         if (avatarView == null || windowManager == null) return
         if (menuView != null) {
-            if (!menuVisible) {
-                runCatching { windowManager?.addView(menuView, menuParams) }
-                menuVisible = true
-            }
+            if (!menuVisible) runCatching { windowManager?.addView(menuView, menuParams) }
+            menuVisible = true
             updateMenuContent()
             return
         }
 
-        // Keep controls visually transparent; FLAG_SECURE prevents capture of this window.
-        val root = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(8), dp(8), dp(8), dp(8))
-            setBackgroundColor(Color.TRANSPARENT)
-        }
+        // Transparent operator controls in a radial layout. This window is protected from capture where Android honors FLAG_SECURE.
+        val root = FrameLayout(this).apply { setBackgroundColor(Color.TRANSPARENT) }
         menuView = root
-
-        val header = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
+        fun radialButton(glyph: String, desc: String, gravity: Int, action: () -> Unit) {
+            val button = actionText(glyph, desc, action).apply {
+                textSize = 23f
+                gravity = Gravity.CENTER
+                background = oval(Color.argb(205, 24, 28, 40))
+                setTextColor(Color.WHITE)
+            }
+            val lp = FrameLayout.LayoutParams(dp(54), dp(54), gravity)
+            lp.setMargins(dp(6), dp(6), dp(6), dp(6))
+            root.addView(button, lp)
         }
-        val title = TextView(this).apply {
-            text = "DYNAMIC  •  LIVE"
-            textSize = 14f
-            setTextColor(Color.WHITE)
-            typeface = Typeface.DEFAULT_BOLD
-        }
-        header.addView(title, LinearLayout.LayoutParams(0, dp(38), 1f))
-        header.addView(actionText("✕", "Cerrar panel") { hideMenu() }, LinearLayout.LayoutParams(dp(34), dp(38)))
-        root.addView(header)
-
-        val tabs = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER
-        }
-        tabs.addView(actionText("Expresiones", "Mostrar expresiones") {
+        radialButton("😊", "Seleccionar expresiones", Gravity.TOP or Gravity.CENTER_HORIZONTAL) {
             menuPage = PAGE_EXPRESSIONS
             updateMenuContent()
-        }, LinearLayout.LayoutParams(0, dp(36), 1f))
-        tabs.addView(actionText("Opciones", "Mostrar opciones") {
+        }
+        radialButton("⚙", "Configuración", Gravity.CENTER_VERTICAL or Gravity.START) {
             menuPage = PAGE_OPTIONS
             updateMenuContent()
-        }, LinearLayout.LayoutParams(0, dp(36), 1f))
-        tabs.addView(actionText("Voz 🎙", "Escuchar comando de voz") {
+        }
+        radialButton("🎙", "Reconocimiento de voz", Gravity.CENTER_VERTICAL or Gravity.END) {
             menuPage = PAGE_VOICE
             updateMenuContent()
             startVoiceRecognition()
-        }, LinearLayout.LayoutParams(0, dp(36), 1f))
-        root.addView(tabs)
+        }
+        radialButton("🔒", "Bloquear o desbloquear avatar", Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL) {
+            locked = !locked
+            getSharedPreferences(PREFS, MODE_PRIVATE).edit().putBoolean(KEY_LOCKED, locked).apply()
+            applyAvatarAppearance()
+            Toast.makeText(this, if (locked) "Avatar bloqueado" else "Avatar desbloqueado", Toast.LENGTH_SHORT).show()
+        }
+        radialButton("✕", "Cerrar menú", Gravity.TOP or Gravity.END) { hideMenu() }
 
-        val divider = View(this).apply { setBackgroundColor(Color.argb(70, 255, 255, 255)) }
-        root.addView(divider, LinearLayout.LayoutParams(-1, dp(1)))
-
-        val content = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        menuContent = content
-        root.addView(content, LinearLayout.LayoutParams(-1, 0, 1f))
+        val panel = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setPadding(dp(8), dp(6), dp(8), dp(6))
+            background = rounded(Color.argb(225, 20, 23, 32), dp(14))
+            visibility = View.GONE
+        }
+        menuContent = panel
+        val panelParams = FrameLayout.LayoutParams(-1, dp(112), Gravity.BOTTOM)
+        panelParams.setMargins(dp(2), dp(2), dp(2), dp(2))
+        root.addView(panel, panelParams)
 
         val metrics = resources.displayMetrics
-        val menuWidth = dp(292)
-        val menuHeight = (metrics.heightPixels - dp(70)).coerceAtLeast(dp(300)).coerceAtMost(dp(480))
+        val menuWidth = dp(248)
+        val menuHeight = dp(310)
         val avatar = avatarParams
-        val xRight = (avatar?.x ?: dp(24)) + (avatar?.width ?: avatarSizePx) + dp(10)
-        val xLeft = (avatar?.x ?: dp(24)) - menuWidth - dp(10)
-        val x = if (xRight + menuWidth < metrics.widthPixels) xRight else xLeft.coerceAtLeast(dp(4))
-        val y = (avatar?.y ?: dp(140)).coerceIn(dp(4), (metrics.heightPixels - menuHeight - dp(8)).coerceAtLeast(dp(4)))
+        val centerX = (avatar?.x ?: dp(24)) + (avatar?.width ?: avatarSizePx) / 2
+        val centerY = (avatar?.y ?: dp(140)) + (avatar?.height ?: avatarSizePx) / 2
+        val x = (centerX - menuWidth / 2).coerceIn(dp(4), (metrics.widthPixels - menuWidth - dp(4)).coerceAtLeast(dp(4)))
+        val y = (centerY - menuHeight / 2).coerceIn(dp(4), (metrics.heightPixels - menuHeight - dp(4)).coerceAtLeast(dp(4)))
         val params = WindowManager.LayoutParams(
-            menuWidth,
-            menuHeight,
+            menuWidth, menuHeight,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                 WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
@@ -561,18 +557,15 @@ class AvatarOverlayService : LifecycleService() {
             gravity = Gravity.TOP or Gravity.START
             this.x = x
             this.y = y
-            title = "Dynamic VT-2D Private Controls"
+            title = "Dynamic VT-2D Private Radial Controls"
         }
         menuParams = params
         menuVisible = true
-        runCatching {
-            windowManager?.addView(root, params)
-            updateMenuContent()
-        }.onFailure {
+        runCatching { windowManager?.addView(root, params) }.onFailure {
             menuVisible = false
             menuView = null
             menuContent = null
-            Toast.makeText(this, "No se pudo abrir el panel privado. Revisa el permiso de superposición.", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, "No se pudo abrir el menú. Revisa el permiso de superposición.", Toast.LENGTH_LONG).show()
         }
     }
 
@@ -586,11 +579,13 @@ class AvatarOverlayService : LifecycleService() {
     private fun updateMenuContent() {
         val content = menuContent ?: return
         content.removeAllViews()
+        content.visibility = View.VISIBLE
         when (menuPage) {
             PAGE_EXPRESSIONS -> buildExpressionPage(content)
             PAGE_OPTIONS -> buildOptionsPage(content)
             else -> buildVoicePage(content)
         }
+        // Keep the radial buttons visible; the selected tool appears in a compact bottom tray.
     }
 
     private fun buildExpressionPage(target: LinearLayout) {
