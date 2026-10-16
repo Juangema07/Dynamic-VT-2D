@@ -89,6 +89,7 @@ class AvatarOverlayService : LifecycleService() {
     private var faceDetector: FaceDetector? = null
     private var cameraEnabled = false
     private var cameraStartInFlight = false
+    private var cameraStartGeneration = 0
     private var cameraEyesClosed = false
     private var cameraMouthOpen = false
     private var faceSmileActive = false
@@ -476,10 +477,15 @@ class AvatarOverlayService : LifecycleService() {
             return
         }
         cameraStartInFlight = true
+        val startGeneration = ++cameraStartGeneration
         val future = ProcessCameraProvider.getInstance(this)
         future.addListener({
+            // A stop command may arrive while CameraX is still initializing.
+            // Ignore stale callbacks so they cannot unexpectedly restart the camera.
+            if (startGeneration != cameraStartGeneration || !cameraStartInFlight) return@addListener
             runCatching {
                 val provider = future.get()
+                if (startGeneration != cameraStartGeneration || !cameraStartInFlight) return@runCatching
                 provider.unbindAll()
                 val analysis = ImageAnalysis.Builder()
                     .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
@@ -613,6 +619,8 @@ class AvatarOverlayService : LifecycleService() {
     }
 
     private fun stopCameraTracking() {
+        // Invalidate any pending CameraX provider callback before releasing resources.
+        cameraStartGeneration++
         cameraProvider?.unbindAll()
         cameraProvider = null
         cameraEnabled = false
