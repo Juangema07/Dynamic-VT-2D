@@ -136,7 +136,7 @@ class MainActivity : ComponentActivity() {
                         onPermission = { openOverlaySettings() },
                         onApply = { activateLive() },
                         onStartRecording = { requestScreenRecording() },
-                        onStopRecording = { stopService(Intent(this, ScreenRecordingService::class.java).setAction(ScreenRecordingService.ACTION_STOP)) }
+                        onStopRecording = { startService(Intent(this, ScreenRecordingService::class.java).setAction(ScreenRecordingService.ACTION_STOP)) }
                     )
                 }
             }
