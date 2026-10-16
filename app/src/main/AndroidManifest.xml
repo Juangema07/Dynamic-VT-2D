@@ -28,7 +28,7 @@
         <service
             android:name=".ScreenRecordingService"
             android:exported="false"
-            android:foregroundServiceType="mediaProjection" />
+            android:foregroundServiceType="mediaProjection|microphone" />
         <service
             android:name=".AvatarOverlayService"
             android:exported="false"
