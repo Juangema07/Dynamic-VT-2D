@@ -546,16 +546,20 @@ class AvatarOverlayService : LifecycleService() {
                 if (!cameraEnabled) return@addOnSuccessListener
                 val face = faces.maxByOrNull { it.boundingBox.width() }
                 if (face != null) {
-                    val leftOpen = face.leftEyeOpenProbability ?: 1f
-                    val rightOpen = face.rightEyeOpenProbability ?: 1f
                     lastFaceSeenAt = SystemClock.elapsedRealtime()
-                    val eyesLookClosed = leftOpen < EYE_CLOSED_THRESHOLD && rightOpen < EYE_CLOSED_THRESHOLD
-                    if (eyesLookClosed) {
-                        closedEyeSamples++
-                        openEyeSamples = 0
-                    } else {
-                        openEyeSamples++
-                        closedEyeSamples = 0
+                    // ML Kit can return null eye probabilities on partial/blurred faces.
+                    // Do not interpret missing data as "eyes open", which caused missed blinks.
+                    val leftOpen = face.leftEyeOpenProbability
+                    val rightOpen = face.rightEyeOpenProbability
+                    if (leftOpen != null && rightOpen != null) {
+                        val eyesLookClosed = leftOpen < EYE_CLOSED_THRESHOLD && rightOpen < EYE_CLOSED_THRESHOLD
+                        if (eyesLookClosed) {
+                            closedEyeSamples++
+                            openEyeSamples = 0
+                        } else {
+                            openEyeSamples++
+                            closedEyeSamples = 0
+                        }
                     }
                     val closed = when {
                         closedEyeSamples >= EYE_CLOSE_CONFIRM_FRAMES -> true
@@ -589,7 +593,7 @@ class AvatarOverlayService : LifecycleService() {
                         cameraMouthOpen = mouthOpen
                         renderFrame()
                     }
-                    updateSmileExpression(face)
+                    // Camera tracking intentionally controls only eye blink and mouth frames.
                 }
             }
             .addOnCompleteListener {
