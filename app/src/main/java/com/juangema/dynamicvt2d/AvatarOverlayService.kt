@@ -19,6 +19,8 @@ import android.graphics.Point
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.net.Uri
+import android.animation.Animator
+import android.animation.AnimatorListenerAdapter
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
@@ -68,6 +70,7 @@ class AvatarOverlayService : LifecycleService() {
     private var avatarView: FrameLayout? = null
     private var avatarImage: ImageView? = null
     private var fallbackView: TextView? = null
+    private var effectView: TextView? = null
     private var avatarParams: WindowManager.LayoutParams? = null
 
     private var menuView: FrameLayout? = null
@@ -92,6 +95,8 @@ class AvatarOverlayService : LifecycleService() {
     private var closedMouthSamples = 0
     private var lastFaceSeenAt = 0L
     private var voiceLevelActive = false
+    private var isSpeakingAnimated = false
+    private var idleOffset = 0f
 
     private var selectedFrames: List<String> = emptyList()
     private var avatarOpacity = 1f
@@ -120,6 +125,22 @@ class AvatarOverlayService : LifecycleService() {
     }
 
     private var speechRecognizer: SpeechRecognizer? = null
+
+    private val idleMotionRunnable = object : Runnable {
+        override fun run() {
+            val view = avatarView ?: return
+            if (!isSpeakingAnimated && !locked) {
+                view.animate().cancel()
+                view.animate().translationY(dp(-3).toFloat()).setDuration(900L).withEndAction {
+                    view.animate().translationY(dp(2).toFloat()).setDuration(1100L).withEndAction {
+                        if (avatarView != null) handler.postDelayed(this, 80L)
+                    }.start()
+                }.start()
+            } else {
+                handler.postDelayed(this, 350L)
+            }
+        }
+    }
 
     private val blinkRunnable = object : Runnable {
         override fun run() {
@@ -173,6 +194,8 @@ class AvatarOverlayService : LifecycleService() {
         if (!cameraEnabled && !cameraStartInFlight) startCameraTracking()
         handler.removeCallbacks(blinkRunnable)
         handler.postDelayed(blinkRunnable, Random.nextLong(2200L, 4800L))
+        handler.removeCallbacks(idleMotionRunnable)
+        handler.postDelayed(idleMotionRunnable, 1200L)
         return Service.START_NOT_STICKY
     }
 
@@ -225,6 +248,17 @@ class AvatarOverlayService : LifecycleService() {
             }
             root.addView(image, FrameLayout.LayoutParams(-1, -1))
             root.addView(fallback, FrameLayout.LayoutParams(-1, -1))
+            val effects = TextView(this).apply {
+                text = ""
+                textSize = 25f
+                gravity = Gravity.CENTER
+                setTextColor(Color.WHITE)
+                setShadowLayer(dp(3).toFloat(), 0f, dp(2).toFloat(), Color.BLACK)
+                visibility = View.GONE
+                elevation = dp(10).toFloat()
+            }
+            root.addView(effects, FrameLayout.LayoutParams(-1, dp(54), Gravity.TOP or Gravity.CENTER_HORIZONTAL))
+            effectView = effects
             root.setOnTouchListener { _, event -> handleAvatarTouch(event) }
             avatarView = root
             avatarImage = image
@@ -366,8 +400,44 @@ class AvatarOverlayService : LifecycleService() {
     }
 
     private fun applyAvatarAppearance() {
-        val alpha = if (locked) avatarOpacity * LOCKED_ALPHA else avatarOpacity
-        avatarView?.alpha = alpha.coerceIn(0.1f, 1f)
+        // Locking disables dragging only; it must never fade the avatar in recordings.
+        avatarView?.alpha = avatarOpacity.coerceIn(0.2f, 1f)
+    }
+
+    private fun setSpeakingMotion(speaking: Boolean) {
+        if (speaking == isSpeakingAnimated) return
+        isSpeakingAnimated = speaking
+        val view = avatarView ?: return
+        view.animate().cancel()
+        if (speaking) {
+            view.animate().translationY(dp(-8).toFloat()).setDuration(110L).withEndAction {
+                view.animate().translationY(0f).setDuration(170L).start()
+            }.start()
+        } else {
+            view.animate().translationY(0f).setDuration(180L).withEndAction {
+                handler.removeCallbacks(idleMotionRunnable)
+                handler.postDelayed(idleMotionRunnable, 500L)
+            }.start()
+        }
+    }
+
+    private fun playHitEffect() {
+        val effect = effectView ?: return
+        effect.animate().cancel()
+        effect.text = "💥  🐦  🐦  🐦"
+        effect.visibility = View.VISIBLE
+        effect.alpha = 0f
+        effect.rotation = -12f
+        effect.scaleX = 0.35f
+        effect.scaleY = 0.35f
+        effect.animate().alpha(1f).scaleX(1.15f).scaleY(1.15f).rotation(12f).setDuration(180L)
+            .withEndAction {
+                effect.animate().rotationBy(350f).scaleX(0.9f).scaleY(0.9f).setDuration(850L)
+                    .withEndAction {
+                        effect.animate().alpha(0f).scaleX(0.4f).scaleY(0.4f).setDuration(220L)
+                            .withEndAction { effect.visibility = View.GONE }.start()
+                    }.start()
+            }.start()
     }
 
     private fun renderFrame() {
@@ -588,7 +658,7 @@ class AvatarOverlayService : LifecycleService() {
         menuView = root
 
         val controls = FrameLayout(this).apply { setBackgroundColor(Color.TRANSPARENT) }
-        val controlsParams = FrameLayout.LayoutParams(-1, dp(220), Gravity.TOP)
+        val controlsParams = FrameLayout.LayoutParams(-1, dp(108), Gravity.TOP)
         root.addView(controls, controlsParams)
 
         fun radialButton(glyph: String, desc: String, buttonGravity: Int, action: () -> Unit) {
@@ -599,8 +669,8 @@ class AvatarOverlayService : LifecycleService() {
                 setTextColor(Color.WHITE)
                 elevation = dp(4).toFloat()
             }
-            val lp = FrameLayout.LayoutParams(dp(52), dp(52), buttonGravity)
-            lp.setMargins(dp(8), dp(8), dp(8), dp(8))
+            val lp = FrameLayout.LayoutParams(dp(42), dp(42), buttonGravity)
+            lp.setMargins(dp(4), dp(4), dp(4), dp(4))
             controls.addView(button, lp)
         }
         radialButton("😊", "Expresiones", Gravity.TOP or Gravity.CENTER_HORIZONTAL) {
@@ -642,16 +712,15 @@ class AvatarOverlayService : LifecycleService() {
         menuContent = panelContent
         panelScroll.addView(panelContent, ScrollView.LayoutParams(-1, -2))
         panel.addView(panelScroll, FrameLayout.LayoutParams(-1, -1))
-        val panelParams = FrameLayout.LayoutParams(-1, dp(224), Gravity.BOTTOM)
+        val panelParams = FrameLayout.LayoutParams(-1, dp(178), Gravity.BOTTOM)
         panelParams.setMargins(dp(4), 0, dp(4), dp(4))
         root.addView(panel, panelParams)
 
         val params = WindowManager.LayoutParams(
-            dp(280), dp(452),
+            dp(236), dp(292),
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
-                WindowManager.LayoutParams.FLAG_SECURE,
+                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.TOP or Gravity.START
@@ -807,11 +876,12 @@ class AvatarOverlayService : LifecycleService() {
             applyAvatarAppearance()
             updateMenuContent()
         })
+        target.addView(actionButton("💥 Efecto golpe + pajaritos") { playHitEffect() })
         target.addView(actionButton("⏹ Detener LIVE") { stopSelf() })
         target.addView(label(
             "Cámara: ${if (cameraEnabled) "activa" else if (cameraStartInFlight) "iniciando" else "apagada"}\n" +
                 "Bloqueo: ${if (locked) "activado" else "desactivado"}\n" +
-                "El panel está protegido contra capturas. La transparencia del avatar también se aplica a grabaciones externas por las reglas de Android.",
+                "El bloqueo solo evita mover el avatar; no lo vuelve transparente.",
             11f,
             MUTED
         ))
@@ -856,16 +926,19 @@ class AvatarOverlayService : LifecycleService() {
                 override fun onReadyForSpeech(params: android.os.Bundle?) {
                     voiceMouthOpen = false
                     voiceLevelActive = false
+                    setSpeakingMotion(false)
                     renderFrame()
                 }
                 override fun onBeginningOfSpeech() {
                     voiceLevelActive = true
+                    setSpeakingMotion(true)
                 }
                 override fun onRmsChanged(rmsdB: Float) {
                     if (!voiceLevelActive) return
                     val speaking = rmsdB >= VOICE_MOUTH_OPEN_RMS
                     if (speaking != voiceMouthOpen) {
                         voiceMouthOpen = speaking
+                        setSpeakingMotion(speaking)
                         renderFrame()
                     }
                 }
@@ -873,10 +946,12 @@ class AvatarOverlayService : LifecycleService() {
                 override fun onEndOfSpeech() {
                     voiceLevelActive = false
                     voiceMouthOpen = false
+                    setSpeakingMotion(false)
                     renderFrame()
                 }
                 override fun onError(error: Int) {
                     voiceMouthOpen = false
+                    setSpeakingMotion(false)
                     renderFrame()
                     speechRecognizer?.destroy()
                     speechRecognizer = null
@@ -886,6 +961,7 @@ class AvatarOverlayService : LifecycleService() {
                 }
                 override fun onResults(results: android.os.Bundle?) {
                     voiceMouthOpen = false
+                    setSpeakingMotion(false)
                     renderFrame()
                     voiceLevelActive = false
                     val phrases = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION).orEmpty()
@@ -1044,6 +1120,8 @@ class AvatarOverlayService : LifecycleService() {
 
     override fun onDestroy() {
         handler.removeCallbacksAndMessages(null)
+        avatarView?.animate()?.cancel()
+        effectView?.animate()?.cancel()
         if (configurationReceiverRegistered) {
             runCatching { unregisterReceiver(configurationReceiver) }
             configurationReceiverRegistered = false
@@ -1076,7 +1154,6 @@ class AvatarOverlayService : LifecycleService() {
         private const val KEY_LOCKED = "avatar_locked"
         private const val NOTIFICATION_ID = 2207
         private const val DOUBLE_TAP_MS = 300L
-        private const val LOCKED_ALPHA = 0.34f
         private const val EYE_CLOSED_THRESHOLD = 0.38f
         private const val EYE_CLOSE_CONFIRM_FRAMES = 2
         private const val EYE_OPEN_CONFIRM_FRAMES = 2
