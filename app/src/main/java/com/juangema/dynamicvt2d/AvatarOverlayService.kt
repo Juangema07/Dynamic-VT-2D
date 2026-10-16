@@ -522,6 +522,8 @@ class AvatarOverlayService : LifecycleService() {
         }
         detector.process(input)
             .addOnSuccessListener(ContextCompat.getMainExecutor(this)) { faces ->
+                // Ignore late detector results after the user has switched tracking off.
+                if (!cameraEnabled) return@addOnSuccessListener
                 val face = faces.maxByOrNull { it.boundingBox.width() }
                 if (face != null) {
                     val leftOpen = face.leftEyeOpenProbability ?: 1f
@@ -975,8 +977,8 @@ class AvatarOverlayService : LifecycleService() {
                     speechRecognizer = null
                 }
                 override fun onPartialResults(partialResults: android.os.Bundle?) {
-                    val partial = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull().orEmpty()
-                    if (partial.isNotBlank() && isKnownVoiceCommand(partial)) processVoiceCommand(partial)
+                    // Act only on final results to avoid executing the same command repeatedly
+                    // as Android refines partial transcripts.
                 }
                 override fun onEvent(eventType: Int, params: android.os.Bundle?) {}
             })
