@@ -632,7 +632,9 @@ class AvatarOverlayService : LifecycleService() {
     private fun stopCameraTracking() {
         // Invalidate any pending CameraX provider callback before releasing resources.
         cameraStartGeneration++
-        cameraProvider?.unbindAll()
+        // CameraX may already be closing after permission revocation or lifecycle teardown.
+        // A cleanup exception must not prevent the rest of LIVE from resetting its state.
+        runCatching { cameraProvider?.unbindAll() }
         cameraProvider = null
         cameraEnabled = false
         cameraStartInFlight = false
