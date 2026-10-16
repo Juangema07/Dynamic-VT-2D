@@ -60,9 +60,12 @@ import kotlin.math.abs
 import kotlin.random.Random
 
 /**
- * Shows the avatar in a normal overlay window and the private operator panel
- * in a separate FLAG_SECURE window. Screen capture can include the avatar
- * without including the controls.
+ * Shows the avatar and operator panel as overlay windows.
+ *
+ * FLAG_SECURE is intentionally not applied to the panel: Android may render a
+ * secure overlay as a black rectangle in screen recordings. With third-party
+ * recorders, Android does not expose a reliable public API that hides only this
+ * window from capture while keeping it visible to the local user.
  */
 class AvatarOverlayService : LifecycleService() {
     private var windowManager: WindowManager? = null
@@ -710,7 +713,7 @@ class AvatarOverlayService : LifecycleService() {
             gravity = Gravity.TOP
         }
         menuContent = panelContent
-        panelScroll.addView(panelContent, ScrollView.LayoutParams(-1, -2))
+        panelScroll.addView(panelContent, FrameLayout.LayoutParams(-1, -2))
         panel.addView(panelScroll, FrameLayout.LayoutParams(-1, -1))
         val panelParams = FrameLayout.LayoutParams(-1, dp(178), Gravity.BOTTOM)
         panelParams.setMargins(dp(4), 0, dp(4), dp(4))
