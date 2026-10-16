@@ -514,9 +514,11 @@ class AvatarOverlayService : LifecycleService() {
                 provider.unbindAll()
                 // CameraX must know the current display rotation. Without this, the frame's
                 // rotationDegrees can remain at portrait after the device rotates to landscape.
-                val displayRotation = avatarView?.display?.rotation
-                    ?: @Suppress("DEPRECATION") windowManager?.defaultDisplay?.rotation
-                    ?: Surface.ROTATION_0
+                val displayRotation = avatarView?.display?.rotation ?: run {
+                    @Suppress("DEPRECATION")
+                    val defaultDisplay = windowManager?.defaultDisplay
+                    defaultDisplay?.rotation ?: Surface.ROTATION_0
+                }
                 val analysis = ImageAnalysis.Builder()
                     .setTargetRotation(displayRotation)
                     .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
