@@ -10,6 +10,11 @@ on:
 permissions:
   contents: write
 
+# Avoid concurrent release/status writes racing against each other.
+concurrency:
+  group: dynamic-vt-2d-android-apk-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   build:
     runs-on: ubuntu-latest
