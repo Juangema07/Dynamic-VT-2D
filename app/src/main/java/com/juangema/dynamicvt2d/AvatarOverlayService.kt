@@ -443,10 +443,11 @@ class AvatarOverlayService : LifecycleService() {
             return
         }
 
+        // Keep controls visually transparent; FLAG_SECURE prevents capture of this window.
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(12), dp(10), dp(12), dp(12))
-            background = rounded(COLOR_PANEL, dp(18))
+            setPadding(dp(8), dp(8), dp(8), dp(8))
+            setBackgroundColor(Color.TRANSPARENT)
         }
         menuView = root
 
