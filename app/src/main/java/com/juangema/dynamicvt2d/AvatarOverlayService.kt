@@ -947,7 +947,7 @@ class AvatarOverlayService : LifecycleService() {
             return
         }
         runCatching {
-            speechRecognizer?.destroy()
+            runCatching { speechRecognizer?.destroy() }
             val recognizer = SpeechRecognizer.createSpeechRecognizer(this)
             speechRecognizer = recognizer
             recognizer.setRecognitionListener(object : RecognitionListener {
@@ -985,7 +985,7 @@ class AvatarOverlayService : LifecycleService() {
                     voiceMouthOpen = false
                     setSpeakingMotion(false)
                     renderFrame()
-                    speechRecognizer?.destroy()
+                    runCatching { speechRecognizer?.destroy() }
                     speechRecognizer = null
                     if (error != SpeechRecognizer.ERROR_NO_MATCH && error != SpeechRecognizer.ERROR_SPEECH_TIMEOUT) {
                         Toast.makeText(this@AvatarOverlayService, "No se entendió el comando. Prueba otra vez.", Toast.LENGTH_SHORT).show()
@@ -1001,7 +1001,7 @@ class AvatarOverlayService : LifecycleService() {
                     val phrase = phrases.firstOrNull { isKnownVoiceCommand(it) }
                         ?: phrases.firstOrNull().orEmpty()
                     if (phrase.isNotBlank()) processVoiceCommand(phrase)
-                    speechRecognizer?.destroy()
+                    runCatching { speechRecognizer?.destroy() }
                     speechRecognizer = null
                 }
                 override fun onPartialResults(partialResults: android.os.Bundle?) {
@@ -1021,7 +1021,7 @@ class AvatarOverlayService : LifecycleService() {
             recognizer.startListening(intent)
             Toast.makeText(this, "Escuchando comando de voz…", Toast.LENGTH_SHORT).show()
         }.onFailure {
-            speechRecognizer?.destroy()
+            runCatching { speechRecognizer?.destroy() }
             speechRecognizer = null
             voiceMouthOpen = false
             renderFrame()
@@ -1165,8 +1165,8 @@ class AvatarOverlayService : LifecycleService() {
             runCatching { unregisterReceiver(configurationReceiver) }
             configurationReceiverRegistered = false
         }
-        speechRecognizer?.cancel()
-        speechRecognizer?.destroy()
+        runCatching { speechRecognizer?.cancel() }
+        runCatching { speechRecognizer?.destroy() }
         speechRecognizer = null
         // Invalidate a pending CameraX provider callback before tearing down this LifecycleService.
         // Otherwise a late callback could attempt to bind the camera after LIVE has been destroyed.
