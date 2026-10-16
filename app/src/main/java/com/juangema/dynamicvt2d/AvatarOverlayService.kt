@@ -859,7 +859,9 @@ class AvatarOverlayService : LifecycleService() {
                 list.addView(row, lp)
             }
             scroll.addView(list)
-            target.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
+            // The panel content is measured inside a ScrollView with wrap-content height;
+            // a zero-height weighted child can collapse, hiding every list expression.
+            target.addView(scroll, LinearLayout.LayoutParams(-1, dp(92)))
         }
         target.addView(label("Desliza para ver todas tus expresiones. Selecciona una para cambiar el avatar.", 11f, MUTED))
     }
