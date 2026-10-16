@@ -28,6 +28,8 @@ import android.os.SystemClock
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
+import android.hardware.display.DisplayManager
+import android.view.Display
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.Surface
@@ -88,6 +90,19 @@ class AvatarOverlayService : LifecycleService() {
     private val handler = Handler(Looper.getMainLooper())
     private val cameraExecutor: ExecutorService = Executors.newSingleThreadExecutor()
     private var cameraProvider: ProcessCameraProvider? = null
+    private var imageAnalysis: ImageAnalysis? = null
+    private var displayManager: DisplayManager? = null
+    private var cameraDisplayListenerRegistered = false
+    private val cameraDisplayListener = object : DisplayManager.DisplayListener {
+        override fun onDisplayAdded(displayId: Int) = Unit
+        override fun onDisplayRemoved(displayId: Int) = Unit
+        override fun onDisplayChanged(displayId: Int) {
+            val defaultDisplayId = displayManager?.getDisplay(Display.DEFAULT_DISPLAY)?.displayId
+            if (displayId == defaultDisplayId) {
+                handler.post { updateCameraTargetRotation() }
+            }
+        }
+    }
     private var faceDetector: FaceDetector? = null
     private var cameraEnabled = false
     private var cameraStartInFlight = false
@@ -181,6 +196,7 @@ class AvatarOverlayService : LifecycleService() {
     override fun onCreate() {
         super.onCreate()
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
+        displayManager = getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
         lastOrientation = resources.configuration.orientation
         runCatching {
             val filter = IntentFilter(Intent.ACTION_CONFIGURATION_CHANGED)
@@ -493,20 +509,18 @@ class AvatarOverlayService : LifecycleService() {
                 val provider = future.get()
                 if (startGeneration != cameraStartGeneration || !cameraStartInFlight) return@runCatching
                 provider.unbindAll()
-                // CameraX must know the current display rotation. Without this, the frame's
-                // rotationDegrees can remain at portrait after the device rotates to landscape.
-                val displayRotation = avatarView?.display?.rotation ?: run {
-                    @Suppress("DEPRECATION")
-                    val defaultDisplay = windowManager?.defaultDisplay
-                    defaultDisplay?.rotation ?: Surface.ROTATION_0
-                }
+                // Read the real default display, not the overlay view's display: overlay
+                // windows can keep a stale rotation while the device is in landscape.
                 val analysis = ImageAnalysis.Builder()
-                    .setTargetRotation(displayRotation)
+                    .setTargetRotation(currentDisplayRotation())
                     .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                     .build()
                 analysis.setAnalyzer(cameraExecutor) { proxy -> analyzeImage(proxy) }
                 provider.bindToLifecycle(this, CameraSelector.DEFAULT_FRONT_CAMERA, analysis)
                 cameraProvider = provider
+                imageAnalysis = analysis
+                registerCameraDisplayListener()
+                updateCameraTargetRotation()
                 cameraEnabled = true
                 cameraStartInFlight = false
                 cameraEyesClosed = false
@@ -520,6 +534,33 @@ class AvatarOverlayService : LifecycleService() {
                 if (menuVisible) updateMenuContent()
             }
         }, ContextCompat.getMainExecutor(this))
+    }
+
+    private fun currentDisplayRotation(): Int {
+        val display = displayManager?.getDisplay(Display.DEFAULT_DISPLAY)
+        if (display != null) return display.rotation
+        @Suppress("DEPRECATION")
+        return windowManager?.defaultDisplay?.rotation ?: Surface.ROTATION_0
+    }
+
+    private fun registerCameraDisplayListener() {
+        if (cameraDisplayListenerRegistered) return
+        runCatching {
+            displayManager?.registerDisplayListener(cameraDisplayListener, handler)
+            cameraDisplayListenerRegistered = true
+        }
+    }
+
+    private fun unregisterCameraDisplayListener() {
+        if (!cameraDisplayListenerRegistered) return
+        runCatching { displayManager?.unregisterDisplayListener(cameraDisplayListener) }
+        cameraDisplayListenerRegistered = false
+    }
+
+    private fun updateCameraTargetRotation() {
+        val analysis = imageAnalysis ?: return
+        if (!cameraEnabled && !cameraStartInFlight) return
+        runCatching { analysis.targetRotation = currentDisplayRotation() }
     }
 
     private fun analyzeImage(proxy: ImageProxy) {
@@ -627,6 +668,8 @@ class AvatarOverlayService : LifecycleService() {
         // CameraX may already be closing after permission revocation or lifecycle teardown.
         // A cleanup exception must not prevent the rest of LIVE from resetting its state.
         runCatching { cameraProvider?.unbindAll() }
+        unregisterCameraDisplayListener()
+        imageAnalysis = null
         cameraProvider = null
         cameraEnabled = false
         cameraStartInFlight = false
