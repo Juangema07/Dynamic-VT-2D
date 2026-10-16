@@ -352,26 +352,7 @@ class AvatarOverlayService : LifecycleService() {
     private fun repositionMenuNearAvatar() {
         val params = menuParams ?: return
         val wm = windowManager ?: return
-        val avatar = avatarParams ?: return
-        val size = displaySize()
-        val width = params.width
-        val height = params.height
-        val centerX = avatar.x + avatar.width / 2
-        val centerY = avatar.y + avatar.height / 2
-        val gap = dp(8)
-        val maxX = (size.x - width).coerceAtLeast(0)
-        val maxY = (size.y - height).coerceAtLeast(0)
-
-        // Prefer below/right of the avatar; flip to the other side when there is no room.
-        params.x = when {
-            centerX + width / 2 <= size.x - dp(8) -> (centerX - width / 2).coerceIn(0, maxX)
-            else -> (centerX - width / 2).coerceIn(0, maxX)
-        }
-        params.y = if (centerY + height / 2 + gap <= size.y) {
-            (avatar.y + avatar.height + gap).coerceIn(0, maxY)
-        } else {
-            (avatar.y - height - gap).coerceIn(0, maxY)
-        }
+        repositionMenuParamsOnly(params)
         runCatching { menuView?.let { wm.updateViewLayout(it, params) } }
     }
 
@@ -707,17 +688,23 @@ class AvatarOverlayService : LifecycleService() {
             controls.addView(button, lp)
         }
         radialButton("😊", "Expresiones", Gravity.TOP or Gravity.CENTER_HORIZONTAL) {
-            menuPage = PAGE_EXPRESSIONS
-            updateMenuContent()
+            if (menuPage == PAGE_EXPRESSIONS) hideMenu() else {
+                menuPage = PAGE_EXPRESSIONS
+                updateMenuContent()
+            }
         }
         radialButton("⚙", "Ajustes", Gravity.CENTER_VERTICAL or Gravity.START) {
-            menuPage = PAGE_OPTIONS
-            updateMenuContent()
+            if (menuPage == PAGE_OPTIONS) hideMenu() else {
+                menuPage = PAGE_OPTIONS
+                updateMenuContent()
+            }
         }
         radialButton("🎙", "Voz", Gravity.CENTER_VERTICAL or Gravity.END) {
-            menuPage = PAGE_VOICE
-            updateMenuContent()
-            startVoiceRecognition()
+            if (menuPage == PAGE_VOICE) hideMenu() else {
+                menuPage = PAGE_VOICE
+                updateMenuContent()
+                startVoiceRecognition()
+            }
         }
         radialButton("🔒", "Bloquear o desbloquear avatar", Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL) {
             locked = !locked
@@ -745,18 +732,22 @@ class AvatarOverlayService : LifecycleService() {
         menuContent = panelContent
         panelScroll.addView(panelContent, FrameLayout.LayoutParams(-1, -2))
         panel.addView(panelScroll, FrameLayout.LayoutParams(-1, -1))
-        val panelParams = FrameLayout.LayoutParams(-1, dp(178), Gravity.BOTTOM)
+        val panelParams = FrameLayout.LayoutParams(-1, dp(104), Gravity.BOTTOM)
         panelParams.setMargins(dp(4), 0, dp(4), dp(4))
         root.addView(panel, panelParams)
 
+        val screen = displaySize()
         val params = WindowManager.LayoutParams(
-            dp(236), dp(292),
+            screen.x.coerceAtLeast(dp(280)), dp(220),
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                 WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
             PixelFormat.TRANSLUCENT
         ).apply {
-            gravity = Gravity.TOP or Gravity.START
+            // Pin the operator tray to the bottom, with a safety offset for Android navigation buttons.
+            gravity = Gravity.BOTTOM or Gravity.START
+            x = 0
+            y = dp(52)
             title = "Dynamic VT-2D Private Controls"
         }
         menuParams = params
@@ -774,21 +765,13 @@ class AvatarOverlayService : LifecycleService() {
     }
 
     private fun repositionMenuParamsOnly(params: WindowManager.LayoutParams) {
-        val avatar = avatarParams
         val size = displaySize()
-        val width = params.width
-        val height = params.height
-        val maxX = (size.x - width).coerceAtLeast(0)
-        val maxY = (size.y - height).coerceAtLeast(0)
-        val centerX = (avatar?.x ?: dp(24)) + (avatar?.width ?: avatarSizePx) / 2
-        val avatarY = avatar?.y ?: dp(140)
-        val avatarH = avatar?.height ?: avatarSizePx
-        params.x = (centerX - width / 2).coerceIn(0, maxX)
-        params.y = if (avatarY + avatarH + dp(8) + height <= size.y) {
-            (avatarY + avatarH + dp(8)).coerceIn(0, maxY)
-        } else {
-            (avatarY - height - dp(8)).coerceIn(0, maxY)
-        }
+        params.width = size.x.coerceAtLeast(dp(280))
+        params.height = dp(220)
+        params.gravity = Gravity.BOTTOM or Gravity.START
+        params.x = 0
+        // Keep the expression tray above the gesture/navigation area in portrait and landscape.
+        params.y = dp(52)
     }
 
     private fun hideMenu() {
@@ -834,56 +817,43 @@ class AvatarOverlayService : LifecycleService() {
             return
         }
 
-        if (circularMode) {
-            val scroll = HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false }
-            val row = LinearLayout(this).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
-                setPadding(dp(2), dp(8), dp(2), dp(8))
-            }
-            expressions.forEach { expression ->
-                val circle = TextView(this).apply {
-                    text = emojiFor(expression.name) + "\n" + expression.name.take(9)
-                    textSize = 10f
-                    gravity = Gravity.CENTER
-                    setTextColor(Color.WHITE)
-                    background = oval(if (expression.name == selectedName) COLOR_ACCENT else COLOR_CARD)
-                    setPadding(dp(4), dp(4), dp(4), dp(4))
-                    contentDescription = "Usar expresión ${expression.name}"
-                    setOnClickListener { selectExpression(expression) }
-                }
-                val params = LinearLayout.LayoutParams(dp(72), dp(72))
-                params.marginEnd = dp(8)
-                row.addView(circle, params)
-            }
-            scroll.addView(row)
-            target.addView(scroll, LinearLayout.LayoutParams(-1, dp(106)))
-        } else {
-            val scroll = ScrollView(this).apply { isVerticalScrollBarEnabled = true }
-            val list = LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL
-                setPadding(0, dp(4), 0, dp(4))
-            }
-            expressions.forEach { expression ->
-                val row = LinearLayout(this).apply {
-                    orientation = LinearLayout.HORIZONTAL
-                    gravity = Gravity.CENTER_VERTICAL
-                    background = rounded(if (expression.name == selectedName) COLOR_SELECTED else COLOR_CARD, dp(12))
-                    setPadding(dp(10), dp(3), dp(10), dp(3))
-                }
-                val text = label("${emojiFor(expression.name)}  ${expression.name}", 13f, Color.WHITE)
-                row.addView(text, LinearLayout.LayoutParams(0, dp(44), 1f))
-                row.setOnClickListener { selectExpression(expression) }
-                val lp = LinearLayout.LayoutParams(-1, dp(48))
-                lp.bottomMargin = dp(6)
-                list.addView(row, lp)
-            }
-            scroll.addView(list)
-            // The panel content is measured inside a ScrollView with wrap-content height;
-            // a zero-height weighted child can collapse, hiding every list expression.
-            target.addView(scroll, LinearLayout.LayoutParams(-1, dp(92)))
+        // Both styles stay in a horizontal bottom tray so every expression is reachable
+        // in portrait and landscape without growing behind Android's navigation controls.
+        val scroll = HorizontalScrollView(this).apply {
+            isHorizontalScrollBarEnabled = false
+            clipToPadding = false
+            setPadding(dp(2), dp(4), dp(2), dp(4))
         }
-        target.addView(label("Desliza para ver todas tus expresiones. Selecciona una para cambiar el avatar.", 11f, MUTED))
+        val row = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        expressions.forEach { expression ->
+            val item = TextView(this).apply {
+                text = if (circularMode) emojiFor(expression.name) + "\n" + expression.name.take(9)
+                    else emojiFor(expression.name) + "  " + expression.name
+                textSize = if (circularMode) 10f else 12f
+                gravity = Gravity.CENTER
+                setTextColor(Color.WHITE)
+                background = if (circularMode) {
+                    oval(if (expression.name == selectedName) COLOR_ACCENT else COLOR_CARD)
+                } else {
+                    rounded(if (expression.name == selectedName) COLOR_SELECTED else COLOR_CARD, dp(14))
+                }
+                setPadding(dp(8), dp(5), dp(8), dp(5))
+                contentDescription = "Usar expresión ${expression.name}"
+                setOnClickListener { selectExpression(expression) }
+            }
+            val itemParams = LinearLayout.LayoutParams(
+                if (circularMode) dp(68) else LinearLayout.LayoutParams.WRAP_CONTENT,
+                dp(58)
+            )
+            itemParams.marginEnd = dp(8)
+            row.addView(item, itemParams)
+        }
+        scroll.addView(row)
+        target.addView(scroll, LinearLayout.LayoutParams(-1, dp(64)))
+        target.addView(label("Desliza horizontalmente para ver y elegir expresiones.", 10f, MUTED))
     }
 
     private fun buildOptionsPage(target: LinearLayout) {
