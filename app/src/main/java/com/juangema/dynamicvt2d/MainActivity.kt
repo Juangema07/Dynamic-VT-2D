@@ -332,13 +332,28 @@ private fun StudioScreen(
                             Text(expression.name, color = Color.White, fontWeight = FontWeight.SemiBold)
                             Text("4 fotogramas PNG", color = Color(0xFFBFC7DA), fontSize = 12.sp)
                         }
-                        OutlinedButton(onClick = {
-                            selectedName = expression.name
-                            AvatarStore.select(context, expression.name)
-                            eyesClosed = false
-                            mouthOpen = false
-                        }) {
-                            Text(if (expression.name == selectedName) "Seleccionada" else "Usar")
+                        Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            OutlinedButton(onClick = {
+                                selectedName = expression.name
+                                AvatarStore.select(context, expression.name)
+                                eyesClosed = false
+                                mouthOpen = false
+                            }) {
+                                Text(if (expression.name == selectedName) "Seleccionada" else "Usar")
+                            }
+                            OutlinedButton(onClick = {
+                                val remaining = expressions.filterNot { it.name == expression.name }
+                                AvatarStore.save(context, remaining)
+                                expressions = remaining
+                                if (selectedName == expression.name) {
+                                    selectedName = remaining.firstOrNull()?.name.orEmpty()
+                                    if (selectedName.isNotBlank()) AvatarStore.select(context, selectedName)
+                                    else AvatarStore.select(context, "")
+                                }
+                                importMessage = "Expresión '" + expression.name + "' eliminada."
+                            }) {
+                                Text("Eliminar")
+                            }
                         }
                     }
                 }
