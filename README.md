@@ -25,6 +25,17 @@ Si escribes un nombre que ya existe, importar cuatro imágenes con ese mismo nom
 
 La compilación de CI verifica que el APK se construya, pero la cámara, el micrófono, el permiso de superposición y la grabación aún requieren validación en un teléfono físico.
 
+### Comandos de voz disponibles
+
+Desde el menú flotante, pulsa **Reconocer comando de voz** y di una orden en español. Ejemplos:
+- «Abrir menú» / «Cerrar menú».
+- «Bloquear» / «Desbloquear».
+- «Activar cámara» / «Detener cámara».
+- «Detener LIVE» para cerrar la superposición.
+- Di el nombre de una expresión importada, por ejemplo «Feliz» o «Confundido».
+
+El reconocimiento depende del servicio de voz instalado en Android. Se permite el reconocimiento en línea si el servicio lo necesita; por tanto, puede requerir conexión a internet y permiso de micrófono. El modo sin conexión depende de que el dispositivo tenga disponible el modelo de idioma correspondiente.
+
 ## Transparencia y grabación de pantalla
 
 El bloqueo solo impide arrastrar el avatar; no debe cambiar su opacidad local. La opacidad del avatar se aplica a la superposición real, por lo que una grabadora externa que capture la pantalla normalmente registra esa misma transparencia.
