@@ -188,15 +188,16 @@ class ScreenRecordingService : Service() {
 
         val uri = outputUri
         if (uri != null) {
-            if (saved) {
-                runCatching {
-                    val values = ContentValues().apply { put(MediaStore.Video.Media.IS_PENDING, 0) }
-                    contentResolver.update(uri, values, null, null)
-                }
+            val published = saved && runCatching {
+                val values = ContentValues().apply { put(MediaStore.Video.Media.IS_PENDING, 0) }
+                contentResolver.update(uri, values, null, null) > 0
+            }.getOrDefault(false)
+            if (published) {
                 Toast.makeText(this, "Video guardado en Películas/Dynamic VT-2D.", Toast.LENGTH_LONG).show()
             } else {
+                // Do not claim success or leave a pending item if MediaStore could not publish it.
                 runCatching { contentResolver.delete(uri, null, null) }
-                Toast.makeText(this, "La grabación no produjo un video válido; se descartó el archivo incompleto.", Toast.LENGTH_LONG).show()
+                Toast.makeText(this, "No se pudo guardar el video correctamente; se descartó el archivo incompleto.", Toast.LENGTH_LONG).show()
             }
         }
         outputUri = null
