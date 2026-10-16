@@ -15,11 +15,18 @@ Aplicación Android para crear y mostrar avatares VTuber 2D con imágenes PNG pr
 
 Si escribes un nombre que ya existe, importar cuatro imágenes con ese mismo nombre reemplaza sus fotogramas. Los datos y ajustes se guardan localmente en el teléfono.
 
-## Estado actual
-La versión inicial incluye importación y persistencia de expresiones, vista previa de los cuatro fotogramas, selección de expresión, avatar flotante arrastrable, tamaño, opacidad y parpadeo automático básico. El modo de detección facial por cámara y los efectos avanzados todavía no están implementados.
+## Funciones incluidas en el código
+- Importar y guardar expresiones personalizadas de cuatro fotogramas PNG.
+- Avatar flotante arrastrable, configuración de tamaño/opacidad y parpadeo automático.
+- Seguimiento facial opcional con cámara frontal para ojos/boca y cambio a expresiones como Feliz si existe una expresión compatible.
+- Reconocimiento de comandos de voz en español (Colombia), sujeto a la disponibilidad y configuración del servicio de reconocimiento instalado en Android.
+- Panel flotante con modo lista y selección circular, bloqueo de movimiento y efecto de golpe.
+- Grabación integrada de pantalla a MP4 en Android 10 o posterior, con consentimiento del sistema y guardado en Películas/Dynamic VT-2D.
+
+La compilación de CI verifica que el APK se construya, pero la cámara, el micrófono, el permiso de superposición y la grabación aún requieren validación en un teléfono físico.
 
 ## Transparencia y grabación de pantalla
 
 El bloqueo solo impide arrastrar el avatar; no debe cambiar su opacidad local. La opacidad del avatar se aplica a la superposición real, por lo que una grabadora externa que capture la pantalla normalmente registra esa misma transparencia.
 
-Android no ofrece a una aplicación normal una API pública y universal para mantener el panel visible en el teléfono y, al mismo tiempo, excluirlo de cualquier grabación externa sin que aparezca un rectángulo negro. La bandera `FLAG_SECURE` puede producir ese rectángulo; por eso el panel actual no la usa. Para una grabación con avatar opaco y controles ausentes mientras el teléfono sigue mostrando el avatar translúcido, hace falta una función de grabación integrada que componga por separado la salida del video. Esa función no está implementada todavía. Al grabar con otra app, cierra el menú antes de empezar para que no aparezca en el video.
+Android no ofrece una API pública universal para mantener una ventana flotante visible para el usuario y excluir únicamente esa ventana de una grabación de pantalla. `FLAG_SECURE` puede producir un rectángulo negro, así que no se aplica al panel. La grabadora integrada nueva usa MediaProjection y guarda MP4, pero captura la pantalla compuesta: si el menú está visible, puede quedar incluido en el video. La exclusión selectiva del menú y la composición de un avatar opaco independiente de su opacidad local siguen pendientes de diseño y prueba en dispositivo real. Mientras tanto, cierra el menú antes de grabar si no quieres que aparezca en el MP4. La grabación integrada requiere Android 10 o posterior.
