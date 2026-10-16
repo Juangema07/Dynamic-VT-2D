@@ -53,6 +53,7 @@ import com.google.mlkit.vision.face.FaceDetection
 import com.google.mlkit.vision.face.FaceDetector
 import com.google.mlkit.vision.face.FaceDetectorOptions
 import java.text.Normalizer
+import java.util.LinkedHashMap
 import java.util.Locale
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
@@ -108,7 +109,8 @@ class AvatarOverlayService : LifecycleService() {
     private var blinkClosed = false
     private var voiceMouthOpen = false
     private var lastRenderedKey = ""
-    private val bitmapCache = mutableMapOf<String, Bitmap?>()
+    // Access-ordered and bounded so switching through many custom expressions does not retain every PNG in memory.
+    private val bitmapCache = LinkedHashMap<String, Bitmap?>(16, 0.75f, true)
 
     private var downX = 0f
     private var downY = 0f
@@ -454,10 +456,19 @@ class AvatarOverlayService : LifecycleService() {
         lastRenderedKey = renderKey
 
         val bitmap = uriText?.let { key ->
-            if (bitmapCache.containsKey(key)) bitmapCache[key]
-            else runCatching {
-                contentResolver.openInputStream(Uri.parse(key))?.use { BitmapFactory.decodeStream(it) }
-            }.getOrNull().also { bitmapCache[key] = it }
+            if (bitmapCache.containsKey(key)) {
+                bitmapCache[key]
+            } else {
+                val decoded = runCatching {
+                    contentResolver.openInputStream(Uri.parse(key))?.use { BitmapFactory.decodeStream(it) }
+                }.getOrNull()
+                bitmapCache[key] = decoded
+                while (bitmapCache.size > MAX_CACHED_BITMAPS) {
+                    val oldestKey = bitmapCache.keys.firstOrNull() ?: break
+                    bitmapCache.remove(oldestKey)
+                }
+                decoded
+            }
         }
         if (bitmap != null) {
             avatarImage?.setImageBitmap(bitmap)
@@ -1192,6 +1203,7 @@ class AvatarOverlayService : LifecycleService() {
         private const val MOUTH_OPEN_CONFIRM_FRAMES = 2
         private const val MOUTH_CLOSE_CONFIRM_FRAMES = 2
         private const val FACE_LOST_RESET_MS = 650L
+        private const val MAX_CACHED_BITMAPS = 12
         private const val VOICE_MOUTH_OPEN_RMS = 2.5f
         private const val SMILE_ON_THRESHOLD = 0.82f
         private const val SMILE_OFF_THRESHOLD = 0.42f
