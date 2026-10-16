@@ -30,6 +30,7 @@ import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import android.view.Gravity
 import android.view.MotionEvent
+import android.view.Surface
 import android.view.View
 import android.view.WindowManager
 import android.widget.FrameLayout
@@ -131,6 +132,19 @@ class AvatarOverlayService : LifecycleService() {
     }
 
     private var speechRecognizer: SpeechRecognizer? = null
+    private var voiceListeningRequested = false
+    private var voiceRestartScheduled = false
+
+    private val voiceRestartRunnable = Runnable {
+        voiceRestartScheduled = false
+        if (voiceListeningRequested && speechRecognizer == null) startVoiceRecognition(showListeningToast = false)
+    }
+
+    private fun scheduleVoiceRecognitionRestart() {
+        if (!voiceListeningRequested || voiceRestartScheduled) return
+        voiceRestartScheduled = true
+        handler.postDelayed(voiceRestartRunnable, 350L)
+    }
 
     private val idleMotionRunnable = object : Runnable {
         override fun run() {
@@ -498,7 +512,13 @@ class AvatarOverlayService : LifecycleService() {
                 val provider = future.get()
                 if (startGeneration != cameraStartGeneration || !cameraStartInFlight) return@runCatching
                 provider.unbindAll()
+                // CameraX must know the current display rotation. Without this, the frame's
+                // rotationDegrees can remain at portrait after the device rotates to landscape.
+                val displayRotation = avatarView?.display?.rotation
+                    ?: @Suppress("DEPRECATION") windowManager?.defaultDisplay?.rotation
+                    ?: Surface.ROTATION_0
                 val analysis = ImageAnalysis.Builder()
+                    .setTargetRotation(displayRotation)
                     .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                     .build()
                 analysis.setAnalyzer(cameraExecutor) { proxy -> analyzeImage(proxy) }
@@ -937,7 +957,10 @@ class AvatarOverlayService : LifecycleService() {
         if (menuVisible) repositionMenuNearAvatar()
     }
 
-    private fun startVoiceRecognition() {
+    private fun startVoiceRecognition(showListeningToast: Boolean = true) {
+        voiceListeningRequested = true
+        handler.removeCallbacks(voiceRestartRunnable)
+        voiceRestartScheduled = false
         if (checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             Toast.makeText(this, "Concede el permiso de micrófono desde el estudio.", Toast.LENGTH_LONG).show()
             return
@@ -965,7 +988,11 @@ class AvatarOverlayService : LifecycleService() {
                 }
                 override fun onRmsChanged(rmsdB: Float) {
                     if (speechRecognizer !== recognizer || !voiceLevelActive) return
-                    val speaking = rmsdB >= VOICE_MOUTH_OPEN_RMS
+                    // SpeechRecognizer reports RMS in dB with device-dependent ranges.
+                    // Use a lower threshold plus separate close hysteresis so quiet speech
+                    // still animates the mouth without rapid open/close flicker.
+                    val speaking = if (voiceMouthOpen) rmsdB >= VOICE_MOUTH_CLOSE_RMS
+                        else rmsdB >= VOICE_MOUTH_OPEN_RMS
                     if (speaking != voiceMouthOpen) {
                         voiceMouthOpen = speaking
                         setSpeakingMotion(speaking)
@@ -987,6 +1014,7 @@ class AvatarOverlayService : LifecycleService() {
                     renderFrame()
                     runCatching { speechRecognizer?.destroy() }
                     speechRecognizer = null
+                    scheduleVoiceRecognitionRestart()
                     if (error != SpeechRecognizer.ERROR_NO_MATCH && error != SpeechRecognizer.ERROR_SPEECH_TIMEOUT) {
                         Toast.makeText(this@AvatarOverlayService, "No se entendió el comando. Prueba otra vez.", Toast.LENGTH_SHORT).show()
                     }
@@ -1003,6 +1031,7 @@ class AvatarOverlayService : LifecycleService() {
                     if (phrase.isNotBlank()) processVoiceCommand(phrase)
                     runCatching { speechRecognizer?.destroy() }
                     speechRecognizer = null
+                    scheduleVoiceRecognitionRestart()
                 }
                 override fun onPartialResults(partialResults: android.os.Bundle?) {
                     // Act only on final results to avoid executing the same command repeatedly
@@ -1019,13 +1048,14 @@ class AvatarOverlayService : LifecycleService() {
                 putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, false)
             }
             recognizer.startListening(intent)
-            Toast.makeText(this, "Escuchando comando de voz…", Toast.LENGTH_SHORT).show()
+            if (showListeningToast) Toast.makeText(this, "Escuchando voz continuamente; di un comando cuando quieras.", Toast.LENGTH_SHORT).show()
         }.onFailure {
             runCatching { speechRecognizer?.destroy() }
             speechRecognizer = null
             voiceMouthOpen = false
             renderFrame()
             Toast.makeText(this, "No se pudo iniciar el reconocimiento de voz.", Toast.LENGTH_LONG).show()
+            scheduleVoiceRecognitionRestart()
         }
     }
 
@@ -1165,6 +1195,9 @@ class AvatarOverlayService : LifecycleService() {
             runCatching { unregisterReceiver(configurationReceiver) }
             configurationReceiverRegistered = false
         }
+        voiceListeningRequested = false
+        handler.removeCallbacks(voiceRestartRunnable)
+        voiceRestartScheduled = false
         runCatching { speechRecognizer?.cancel() }
         runCatching { speechRecognizer?.destroy() }
         speechRecognizer = null
@@ -1206,7 +1239,8 @@ class AvatarOverlayService : LifecycleService() {
         private const val MOUTH_CLOSE_CONFIRM_FRAMES = 2
         private const val FACE_LOST_RESET_MS = 650L
         private const val MAX_CACHED_BITMAPS = 12
-        private const val VOICE_MOUTH_OPEN_RMS = 2.5f
+        private const val VOICE_MOUTH_OPEN_RMS = 1.8f
+        private const val VOICE_MOUTH_CLOSE_RMS = 1.2f
         private const val SMILE_ON_THRESHOLD = 0.82f
         private const val SMILE_OFF_THRESHOLD = 0.42f
         private const val PAGE_EXPRESSIONS = 0
