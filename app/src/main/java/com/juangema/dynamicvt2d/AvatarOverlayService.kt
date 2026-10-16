@@ -81,6 +81,12 @@ class AvatarOverlayService : LifecycleService() {
     private var cameraEyesClosed = false
     private var cameraMouthOpen = false
     private var faceSmileActive = false
+    private var closedEyeSamples = 0
+    private var openEyeSamples = 0
+    private var openMouthSamples = 0
+    private var closedMouthSamples = 0
+    private var lastFaceSeenAt = 0L
+    private var voiceLevelActive = false
 
     private var selectedFrames: List<String> = emptyList()
     private var avatarOpacity = 1f
@@ -120,10 +126,11 @@ class AvatarOverlayService : LifecycleService() {
         super.onCreate()
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
         val options = FaceDetectorOptions.Builder()
-            .setPerformanceMode(FaceDetectorOptions.PERFORMANCE_MODE_FAST)
+            .setPerformanceMode(FaceDetectorOptions.PERFORMANCE_MODE_ACCURATE)
             .setLandmarkMode(FaceDetectorOptions.LANDMARK_MODE_ALL)
             .setClassificationMode(FaceDetectorOptions.CLASSIFICATION_MODE_ALL)
             .setContourMode(FaceDetectorOptions.CONTOUR_MODE_ALL)
+            .enableTracking()
             .build()
         faceDetector = FaceDetection.getClient(options)
     }
@@ -362,7 +369,20 @@ class AvatarOverlayService : LifecycleService() {
                 if (face != null) {
                     val leftOpen = face.leftEyeOpenProbability ?: 1f
                     val rightOpen = face.rightEyeOpenProbability ?: 1f
-                    val closed = leftOpen < EYE_CLOSED_THRESHOLD && rightOpen < EYE_CLOSED_THRESHOLD
+                    lastFaceSeenAt = SystemClock.elapsedRealtime()
+                    val eyesLookClosed = leftOpen < EYE_CLOSED_THRESHOLD && rightOpen < EYE_CLOSED_THRESHOLD
+                    if (eyesLookClosed) {
+                        closedEyeSamples++
+                        openEyeSamples = 0
+                    } else {
+                        openEyeSamples++
+                        closedEyeSamples = 0
+                    }
+                    val closed = when {
+                        closedEyeSamples >= EYE_CLOSE_CONFIRM_FRAMES -> true
+                        openEyeSamples >= EYE_OPEN_CONFIRM_FRAMES -> false
+                        else -> cameraEyesClosed
+                    }
 
                     val upperLip = face.getContour(FaceContour.UPPER_LIP_BOTTOM)?.points
                     val lowerLip = face.getContour(FaceContour.LOWER_LIP_TOP)?.points
@@ -371,7 +391,19 @@ class AvatarOverlayService : LifecycleService() {
                         val lowerY = lowerLip.map { it.y.toDouble() }.average()
                         (lowerY - upperY) / face.boundingBox.height().coerceAtLeast(1)
                     } else 0.0
-                    val mouthOpen = mouthGap > MOUTH_OPEN_THRESHOLD
+                    val mouthOpenNow = mouthGap > MOUTH_OPEN_THRESHOLD
+                    if (mouthOpenNow) {
+                        openMouthSamples++
+                        closedMouthSamples = 0
+                    } else {
+                        closedMouthSamples++
+                        openMouthSamples = 0
+                    }
+                    val mouthOpen = when {
+                        openMouthSamples >= MOUTH_OPEN_CONFIRM_FRAMES -> true
+                        closedMouthSamples >= MOUTH_CLOSE_CONFIRM_FRAMES -> false
+                        else -> cameraMouthOpen
+                    }
 
                     if (closed != cameraEyesClosed || mouthOpen != cameraMouthOpen) {
                         cameraEyesClosed = closed
@@ -383,6 +415,19 @@ class AvatarOverlayService : LifecycleService() {
             }
             .addOnCompleteListener {
                 proxy.close()
+                handler.post {
+                    if (cameraEnabled && SystemClock.elapsedRealtime() - lastFaceSeenAt > FACE_LOST_RESET_MS) {
+                        closedEyeSamples = 0
+                        openEyeSamples = 0
+                        openMouthSamples = 0
+                        closedMouthSamples = 0
+                        val changed = cameraEyesClosed || cameraMouthOpen
+                        cameraEyesClosed = false
+                        cameraMouthOpen = false
+                        faceSmileActive = false
+                        if (changed) renderFrame()
+                    }
+                }
             }
     }
 
@@ -416,6 +461,11 @@ class AvatarOverlayService : LifecycleService() {
         cameraEyesClosed = false
         cameraMouthOpen = false
         faceSmileActive = false
+        closedEyeSamples = 0
+        openEyeSamples = 0
+        openMouthSamples = 0
+        closedMouthSamples = 0
+        lastFaceSeenAt = 0L
         renderFrame()
         if (menuVisible) updateMenuContent()
     }
@@ -688,16 +738,24 @@ class AvatarOverlayService : LifecycleService() {
             speechRecognizer = recognizer
             recognizer.setRecognitionListener(object : RecognitionListener {
                 override fun onReadyForSpeech(params: android.os.Bundle?) {
-                    voiceMouthOpen = true
+                    voiceMouthOpen = false
+                    voiceLevelActive = false
                     renderFrame()
                 }
                 override fun onBeginningOfSpeech() {
-                    voiceMouthOpen = true
-                    renderFrame()
+                    voiceLevelActive = true
                 }
-                override fun onRmsChanged(rmsdB: Float) {}
+                override fun onRmsChanged(rmsdB: Float) {
+                    if (!voiceLevelActive) return
+                    val speaking = rmsdB >= VOICE_MOUTH_OPEN_RMS
+                    if (speaking != voiceMouthOpen) {
+                        voiceMouthOpen = speaking
+                        renderFrame()
+                    }
+                }
                 override fun onBufferReceived(buffer: ByteArray?) {}
                 override fun onEndOfSpeech() {
+                    voiceLevelActive = false
                     voiceMouthOpen = false
                     renderFrame()
                 }
@@ -713,13 +771,18 @@ class AvatarOverlayService : LifecycleService() {
                 override fun onResults(results: android.os.Bundle?) {
                     voiceMouthOpen = false
                     renderFrame()
-                    val phrases = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
-                    val phrase = phrases?.firstOrNull().orEmpty()
+                    voiceLevelActive = false
+                    val phrases = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION).orEmpty()
+                    val phrase = phrases.firstOrNull { isKnownVoiceCommand(it) }
+                        ?: phrases.firstOrNull().orEmpty()
                     if (phrase.isNotBlank()) processVoiceCommand(phrase)
                     speechRecognizer?.destroy()
                     speechRecognizer = null
                 }
-                override fun onPartialResults(partialResults: android.os.Bundle?) {}
+                override fun onPartialResults(partialResults: android.os.Bundle?) {
+                    val partial = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull().orEmpty()
+                    if (partial.isNotBlank() && isKnownVoiceCommand(partial)) processVoiceCommand(partial)
+                }
                 override fun onEvent(eventType: Int, params: android.os.Bundle?) {}
             })
             val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
@@ -727,7 +790,8 @@ class AvatarOverlayService : LifecycleService() {
                 putExtra(RecognizerIntent.EXTRA_LANGUAGE, "es-CO")
                 putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "es-CO")
                 putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 5)
-                putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false)
+                putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+                putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
             }
             recognizer.startListening(intent)
             Toast.makeText(this, "Escuchando comando de voz…", Toast.LENGTH_SHORT).show()
@@ -738,6 +802,17 @@ class AvatarOverlayService : LifecycleService() {
             renderFrame()
             Toast.makeText(this, "No se pudo iniciar el reconocimiento de voz.", Toast.LENGTH_LONG).show()
         }
+    }
+
+    private fun isKnownVoiceCommand(raw: String): Boolean {
+        val command = normalize(raw)
+        if (command.contains("cerrar menu") || command.contains("ocultar menu") ||
+            command.contains("abrir menu") || command == "menu" || command.contains("mostrar menu") ||
+            command.contains("desbloquear") || command.contains("bloquear") ||
+            command.contains("activar camara") || command.contains("iniciar camara") ||
+            command.contains("seguimiento facial") || command.contains("detener camara") ||
+            command.contains("apagar camara")) return true
+        return AvatarStore.load(this).any { normalize(it.name).let { n -> n.isNotBlank() && command.contains(n) } }
     }
 
     private fun processVoiceCommand(raw: String) {
@@ -882,8 +957,14 @@ class AvatarOverlayService : LifecycleService() {
         private const val NOTIFICATION_ID = 2207
         private const val DOUBLE_TAP_MS = 300L
         private const val LOCKED_ALPHA = 0.34f
-        private const val EYE_CLOSED_THRESHOLD = 0.42f
-        private const val MOUTH_OPEN_THRESHOLD = 0.018
+        private const val EYE_CLOSED_THRESHOLD = 0.38f
+        private const val EYE_CLOSE_CONFIRM_FRAMES = 2
+        private const val EYE_OPEN_CONFIRM_FRAMES = 2
+        private const val MOUTH_OPEN_THRESHOLD = 0.022
+        private const val MOUTH_OPEN_CONFIRM_FRAMES = 2
+        private const val MOUTH_CLOSE_CONFIRM_FRAMES = 2
+        private const val FACE_LOST_RESET_MS = 650L
+        private const val VOICE_MOUTH_OPEN_RMS = 2.5f
         private const val SMILE_ON_THRESHOLD = 0.82f
         private const val SMILE_OFF_THRESHOLD = 0.42f
         private const val PAGE_EXPRESSIONS = 0
