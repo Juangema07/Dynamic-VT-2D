@@ -629,26 +629,11 @@ class AvatarOverlayService : LifecycleService() {
             }
     }
 
+    // Facial tracking controls only eye and mouth frames. It must never select
+    // a different named expression automatically: expression choice belongs to the user.
     private fun updateSmileExpression(face: Face) {
-        val smileProbability = face.smilingProbability ?: 0f
-        val expressions = AvatarStore.load(this)
-        if (smileProbability >= SMILE_ON_THRESHOLD && !faceSmileActive) {
-            val happy = expressions.firstOrNull {
-                val n = normalize(it.name)
-                n.contains("feliz") || n.contains("alegre") || n.contains("sonrisa") || n.contains("happy")
-            }
-            if (happy != null) {
-                faceSmileActive = true
-                selectExpression(happy)
-            }
-        } else if (smileProbability <= SMILE_OFF_THRESHOLD && faceSmileActive) {
-            faceSmileActive = false
-            val neutral = expressions.firstOrNull {
-                val n = normalize(it.name)
-                n.contains("neutro") || n.contains("neutral")
-            }
-            if (neutral != null) selectExpression(neutral)
-        }
+        // Intentionally disabled because smile classification caused unstable expression switching.
+        faceSmileActive = false
     }
 
     private fun stopCameraTracking() {
