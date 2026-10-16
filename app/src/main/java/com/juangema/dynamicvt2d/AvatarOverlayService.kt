@@ -894,7 +894,7 @@ class AvatarOverlayService : LifecycleService() {
 
     private fun buildVoicePage(target: LinearLayout) {
         target.addView(label("CONTROL POR VOZ", 12f, COLOR_ACCENT))
-        target.addView(label("Pulsa escuchar y di el nombre de una expresión, «abrir menú», «cerrar menú», «bloquear», «desbloquear» o «activar cámara».", 13f, Color.WHITE))
+        target.addView(label("Pulsa escuchar y di el nombre de una expresión, «abrir menú», «cerrar menú», «bloquear», «desbloquear», «activar cámara» o «detener LIVE».", 13f, Color.WHITE))
         target.addView(actionButton("🎙 Escuchar ahora") { startVoiceRecognition() })
         target.addView(actionButton("↩ Volver a expresiones") {
             menuPage = PAGE_EXPRESSIONS
