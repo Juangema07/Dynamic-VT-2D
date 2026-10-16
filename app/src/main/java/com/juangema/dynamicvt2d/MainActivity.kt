@@ -228,21 +228,37 @@ private fun StudioScreen(
         if (uris.size != 4) {
             importMessage = "Debes seleccionar exactamente 4 imágenes. Seleccionaste " + uris.size + "."
         } else {
-            val name = expressionName.trim().ifBlank { "Neutro" }
-            uris.forEach { uri ->
-                runCatching {
-                    context.contentResolver.takePersistableUriPermission(uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                }
+            val validation = uris.mapIndexed { index, uri ->
+                val valid = runCatching {
+                    context.contentResolver.openInputStream(uri)?.use { stream ->
+                        val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                        BitmapFactory.decodeStream(stream, null, options)
+                        options.outWidth > 0 && options.outHeight > 0 &&
+                            options.outMimeType.equals("image/png", ignoreCase = true)
+                    } ?: false
+                }.getOrDefault(false)
+                index to valid
             }
-            val newExpression = AvatarExpression(name, uris.map { it.toString() })
-            val updated = expressions.filterNot { it.name.equals(name, ignoreCase = true) } + newExpression
-            AvatarStore.save(context, updated)
-            AvatarStore.select(context, name)
-            expressions = updated
-            selectedName = name
-            eyesClosed = false
-            mouthOpen = false
-            importMessage = "Expresión '" + name + "' guardada con sus cuatro imágenes."
+            val invalidFrame = validation.firstOrNull { !it.second }
+            if (invalidFrame != null) {
+                importMessage = "La imagen " + (invalidFrame.first + 1) + " no es un PNG legible. No se guardaron cambios."
+            } else {
+                val name = expressionName.trim().ifBlank { "Neutro" }
+                uris.forEach { uri ->
+                    runCatching {
+                        context.contentResolver.takePersistableUriPermission(uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    }
+                }
+                val newExpression = AvatarExpression(name, uris.map { it.toString() })
+                val updated = expressions.filterNot { it.name.equals(name, ignoreCase = true) } + newExpression
+                AvatarStore.save(context, updated)
+                AvatarStore.select(context, name)
+                expressions = updated
+                selectedName = name
+                eyesClosed = false
+                mouthOpen = false
+                importMessage = "Expresión '" + name + "' guardada con sus cuatro PNG válidos."
+            }
         }
     }
 
