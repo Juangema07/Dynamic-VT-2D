@@ -494,14 +494,14 @@ class AvatarOverlayService : LifecycleService() {
         // Transparent operator controls in a radial layout. This window is protected from capture where Android honors FLAG_SECURE.
         val root = FrameLayout(this).apply { setBackgroundColor(Color.TRANSPARENT) }
         menuView = root
-        fun radialButton(glyph: String, desc: String, gravity: Int, action: () -> Unit) {
+        fun radialButton(glyph: String, desc: String, buttonGravity: Int, action: () -> Unit) {
             val button = actionText(glyph, desc, action).apply {
                 textSize = 23f
-                gravity = Gravity.CENTER
+                this.gravity = Gravity.CENTER
                 background = oval(Color.argb(205, 24, 28, 40))
                 setTextColor(Color.WHITE)
             }
-            val lp = FrameLayout.LayoutParams(dp(54), dp(54), gravity)
+            val lp = FrameLayout.LayoutParams(dp(54), dp(54), buttonGravity)
             lp.setMargins(dp(6), dp(6), dp(6), dp(6))
             root.addView(button, lp)
         }
