@@ -5,12 +5,17 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
 import android.content.Intent
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.IntentFilter
+import android.content.res.Configuration
 import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.PixelFormat
+import android.graphics.Point
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.net.Uri
@@ -103,6 +108,16 @@ class AvatarOverlayService : LifecycleService() {
     private var movedDuringTouch = false
     private var lastTapTime = 0L
     private var avatarSizePx = 0
+    private var lastOrientation = Configuration.ORIENTATION_UNDEFINED
+    private var configurationReceiverRegistered = false
+
+    private val configurationReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action == Intent.ACTION_CONFIGURATION_CHANGED) {
+                handler.postDelayed({ repositionOverlaysForCurrentDisplay() }, 180L)
+            }
+        }
+    }
 
     private var speechRecognizer: SpeechRecognizer? = null
 
@@ -125,6 +140,17 @@ class AvatarOverlayService : LifecycleService() {
     override fun onCreate() {
         super.onCreate()
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
+        lastOrientation = resources.configuration.orientation
+        runCatching {
+            val filter = IntentFilter(Intent.ACTION_CONFIGURATION_CHANGED)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                registerReceiver(configurationReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+            } else {
+                @Suppress("DEPRECATION")
+                registerReceiver(configurationReceiver, filter)
+            }
+            configurationReceiverRegistered = true
+        }
         val options = FaceDetectorOptions.Builder()
             .setPerformanceMode(FaceDetectorOptions.PERFORMANCE_MODE_ACCURATE)
             .setLandmarkMode(FaceDetectorOptions.LANDMARK_MODE_ALL)
@@ -234,7 +260,65 @@ class AvatarOverlayService : LifecycleService() {
 
         applyAvatarAppearance()
         renderFrame()
-        if (menuVisible) showMenu()
+        if (menuVisible) repositionMenuNearAvatar()
+    }
+
+    private fun displaySize(): Point {
+        val point = Point()
+        runCatching {
+            @Suppress("DEPRECATION")
+            windowManager?.defaultDisplay?.getRealSize(point)
+        }
+        if (point.x <= 0 || point.y <= 0) {
+            point.x = resources.displayMetrics.widthPixels
+            point.y = resources.displayMetrics.heightPixels
+        }
+        return point
+    }
+
+    private fun repositionOverlaysForCurrentDisplay() {
+        val wm = windowManager ?: return
+        val avatar = avatarParams ?: return
+        val size = displaySize()
+        val oldOrientation = lastOrientation
+        lastOrientation = resources.configuration.orientation
+
+        // Clamp the saved overlay position to the new display bounds after rotation.
+        val maxX = (size.x - avatar.width).coerceAtLeast(0)
+        val maxY = (size.y - avatar.height).coerceAtLeast(0)
+        avatar.x = avatar.x.coerceIn(0, maxX)
+        avatar.y = avatar.y.coerceIn(0, maxY)
+        runCatching { avatarView?.let { wm.updateViewLayout(it, avatar) } }
+        getSharedPreferences(PREFS, MODE_PRIVATE).edit()
+            .putInt("overlay_x", avatar.x).putInt("overlay_y", avatar.y).apply()
+
+        if (menuVisible) repositionMenuNearAvatar()
+    }
+
+    private fun repositionMenuNearAvatar() {
+        val params = menuParams ?: return
+        val wm = windowManager ?: return
+        val avatar = avatarParams ?: return
+        val size = displaySize()
+        val width = params.width
+        val height = params.height
+        val centerX = avatar.x + avatar.width / 2
+        val centerY = avatar.y + avatar.height / 2
+        val gap = dp(8)
+        val maxX = (size.x - width).coerceAtLeast(0)
+        val maxY = (size.y - height).coerceAtLeast(0)
+
+        // Prefer below/right of the avatar; flip to the other side when there is no room.
+        params.x = when {
+            centerX + width / 2 <= size.x - dp(8) -> (centerX - width / 2).coerceIn(0, maxX)
+            else -> (centerX - width / 2).coerceIn(0, maxX)
+        }
+        params.y = if (centerY + height / 2 + gap <= size.y) {
+            (avatar.y + avatar.height + gap).coerceIn(0, maxY)
+        } else {
+            (avatar.y - height - gap).coerceIn(0, maxY)
+        }
+        runCatching { menuView?.let { wm.updateViewLayout(it, params) } }
     }
 
     private fun handleAvatarTouch(event: MotionEvent): Boolean {
@@ -485,35 +569,49 @@ class AvatarOverlayService : LifecycleService() {
     private fun showMenu() {
         if (avatarView == null || windowManager == null) return
         if (menuView != null) {
-            if (!menuVisible) runCatching { windowManager?.addView(menuView, menuParams) }
+            if (!menuVisible) {
+                runCatching { windowManager?.addView(menuView, menuParams) }
+                    .onFailure {
+                        Toast.makeText(this, "No se pudo abrir el menú.", Toast.LENGTH_SHORT).show()
+                        return
+                    }
+            }
             menuVisible = true
+            repositionMenuNearAvatar()
             updateMenuContent()
             return
         }
 
-        // Transparent operator controls in a radial layout. This window is protected from capture where Android honors FLAG_SECURE.
+        // The operator window is anchored to the avatar, but its content has separate zones:
+        // radial actions on top and a scrollable tool tray below so neither covers the other.
         val root = FrameLayout(this).apply { setBackgroundColor(Color.TRANSPARENT) }
         menuView = root
+
+        val controls = FrameLayout(this).apply { setBackgroundColor(Color.TRANSPARENT) }
+        val controlsParams = FrameLayout.LayoutParams(-1, dp(220), Gravity.TOP)
+        root.addView(controls, controlsParams)
+
         fun radialButton(glyph: String, desc: String, buttonGravity: Int, action: () -> Unit) {
             val button = actionText(glyph, desc, action).apply {
-                textSize = 23f
+                textSize = 22f
                 this.gravity = Gravity.CENTER
-                background = oval(Color.argb(205, 24, 28, 40))
+                background = oval(Color.argb(232, 24, 28, 40))
                 setTextColor(Color.WHITE)
+                elevation = dp(4).toFloat()
             }
-            val lp = FrameLayout.LayoutParams(dp(54), dp(54), buttonGravity)
-            lp.setMargins(dp(6), dp(6), dp(6), dp(6))
-            root.addView(button, lp)
+            val lp = FrameLayout.LayoutParams(dp(52), dp(52), buttonGravity)
+            lp.setMargins(dp(8), dp(8), dp(8), dp(8))
+            controls.addView(button, lp)
         }
-        radialButton("😊", "Seleccionar expresiones", Gravity.TOP or Gravity.CENTER_HORIZONTAL) {
+        radialButton("😊", "Expresiones", Gravity.TOP or Gravity.CENTER_HORIZONTAL) {
             menuPage = PAGE_EXPRESSIONS
             updateMenuContent()
         }
-        radialButton("⚙", "Configuración", Gravity.CENTER_VERTICAL or Gravity.START) {
+        radialButton("⚙", "Ajustes", Gravity.CENTER_VERTICAL or Gravity.START) {
             menuPage = PAGE_OPTIONS
             updateMenuContent()
         }
-        radialButton("🎙", "Reconocimiento de voz", Gravity.CENTER_VERTICAL or Gravity.END) {
+        radialButton("🎙", "Voz", Gravity.CENTER_VERTICAL or Gravity.END) {
             menuPage = PAGE_VOICE
             updateMenuContent()
             startVoiceRecognition()
@@ -523,31 +621,25 @@ class AvatarOverlayService : LifecycleService() {
             getSharedPreferences(PREFS, MODE_PRIVATE).edit().putBoolean(KEY_LOCKED, locked).apply()
             applyAvatarAppearance()
             Toast.makeText(this, if (locked) "Avatar bloqueado" else "Avatar desbloqueado", Toast.LENGTH_SHORT).show()
+            updateMenuContent()
         }
         radialButton("✕", "Cerrar menú", Gravity.TOP or Gravity.END) { hideMenu() }
 
         val panel = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER
-            setPadding(dp(8), dp(6), dp(8), dp(6))
-            background = rounded(Color.argb(225, 20, 23, 32), dp(14))
-            visibility = View.GONE
+            gravity = Gravity.TOP
+            setPadding(dp(10), dp(8), dp(10), dp(8))
+            background = rounded(Color.argb(238, 20, 23, 32), dp(16))
+            elevation = dp(8).toFloat()
+            clipToPadding = false
         }
         menuContent = panel
-        val panelParams = FrameLayout.LayoutParams(-1, dp(112), Gravity.BOTTOM)
-        panelParams.setMargins(dp(2), dp(2), dp(2), dp(2))
+        val panelParams = FrameLayout.LayoutParams(-1, dp(224), Gravity.BOTTOM)
+        panelParams.setMargins(dp(4), 0, dp(4), dp(4))
         root.addView(panel, panelParams)
 
-        val metrics = resources.displayMetrics
-        val menuWidth = dp(248)
-        val menuHeight = dp(310)
-        val avatar = avatarParams
-        val centerX = (avatar?.x ?: dp(24)) + (avatar?.width ?: avatarSizePx) / 2
-        val centerY = (avatar?.y ?: dp(140)) + (avatar?.height ?: avatarSizePx) / 2
-        val x = (centerX - menuWidth / 2).coerceIn(dp(4), (metrics.widthPixels - menuWidth - dp(4)).coerceAtLeast(dp(4)))
-        val y = (centerY - menuHeight / 2).coerceIn(dp(4), (metrics.heightPixels - menuHeight - dp(4)).coerceAtLeast(dp(4)))
         val params = WindowManager.LayoutParams(
-            menuWidth, menuHeight,
+            dp(280), dp(452),
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                 WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
@@ -555,17 +647,37 @@ class AvatarOverlayService : LifecycleService() {
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.TOP or Gravity.START
-            this.x = x
-            this.y = y
-            title = "Dynamic VT-2D Private Radial Controls"
+            title = "Dynamic VT-2D Private Controls"
         }
         menuParams = params
+        repositionMenuParamsOnly(params)
         menuVisible = true
         runCatching { windowManager?.addView(root, params) }.onFailure {
             menuVisible = false
             menuView = null
             menuContent = null
+            menuParams = null
             Toast.makeText(this, "No se pudo abrir el menú. Revisa el permiso de superposición.", Toast.LENGTH_LONG).show()
+            return
+        }
+        updateMenuContent()
+    }
+
+    private fun repositionMenuParamsOnly(params: WindowManager.LayoutParams) {
+        val avatar = avatarParams
+        val size = displaySize()
+        val width = params.width
+        val height = params.height
+        val maxX = (size.x - width).coerceAtLeast(0)
+        val maxY = (size.y - height).coerceAtLeast(0)
+        val centerX = (avatar?.x ?: dp(24)) + (avatar?.width ?: avatarSizePx) / 2
+        val avatarY = avatar?.y ?: dp(140)
+        val avatarH = avatar?.height ?: avatarSizePx
+        params.x = (centerX - width / 2).coerceIn(0, maxX)
+        params.y = if (avatarY + avatarH + dp(8) + height <= size.y) {
+            (avatarY + avatarH + dp(8)).coerceIn(0, maxY)
+        } else {
+            (avatarY - height - dp(8)).coerceIn(0, maxY)
         }
     }
 
@@ -574,6 +686,7 @@ class AvatarOverlayService : LifecycleService() {
             runCatching { menuView?.let { windowManager?.removeView(it) } }
         }
         menuVisible = false
+        menuContent?.visibility = View.GONE
     }
 
     private fun updateMenuContent() {
@@ -715,7 +828,7 @@ class AvatarOverlayService : LifecycleService() {
         avatarSizePx = next
         AvatarStore.setSize(this, next / resources.displayMetrics.density)
         runCatching { windowManager?.updateViewLayout(avatarView, params) }
-        if (menuVisible) showMenu()
+        if (menuVisible) repositionMenuNearAvatar()
     }
 
     private fun startVoiceRecognition() {
@@ -923,6 +1036,10 @@ class AvatarOverlayService : LifecycleService() {
 
     override fun onDestroy() {
         handler.removeCallbacksAndMessages(null)
+        if (configurationReceiverRegistered) {
+            runCatching { unregisterReceiver(configurationReceiver) }
+            configurationReceiverRegistered = false
+        }
         speechRecognizer?.cancel()
         speechRecognizer?.destroy()
         speechRecognizer = null
