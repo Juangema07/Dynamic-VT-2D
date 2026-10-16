@@ -87,7 +87,7 @@ class ScreenRecordingService : Service() {
         try {
             createNotificationChannel()
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                startForeground(NOTIFICATION_ID, buildNotification(), ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION)
+                startForeground(NOTIFICATION_ID, buildNotification(), ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION or ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)
             } else {
                 startForeground(NOTIFICATION_ID, buildNotification())
             }
@@ -124,7 +124,12 @@ class ScreenRecordingService : Service() {
             }
             mediaRecorder = recorder
             recorder.setVideoSource(MediaRecorder.VideoSource.SURFACE)
+            recorder.setAudioSource(MediaRecorder.AudioSource.MIC)
             recorder.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
+            recorder.setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
+            recorder.setAudioChannels(1)
+            recorder.setAudioSamplingRate(44_100)
+            recorder.setAudioEncodingBitRate(128_000)
             recorder.setVideoEncoder(MediaRecorder.VideoEncoder.H264)
             recorder.setVideoSize(width, height)
             recorder.setVideoFrameRate(30)
