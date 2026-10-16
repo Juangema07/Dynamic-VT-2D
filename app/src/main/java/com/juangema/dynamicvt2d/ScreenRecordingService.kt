@@ -45,7 +45,14 @@ class ScreenRecordingService : Service() {
 
     private val projectionCallback = object : MediaProjection.Callback() {
         override fun onStop() {
-            if (recording && !finalizing) stopRecording()
+            // Android can revoke the projection before the encoder has started as well.
+            // Clean up in either state to avoid leaving a foreground service or pending MP4 behind.
+            if (!finalizing) {
+                if (!recording) {
+                    Toast.makeText(this@ScreenRecordingService, "Android detuvo la captura de pantalla.", Toast.LENGTH_SHORT).show()
+                }
+                stopRecording()
+            }
         }
     }
 
