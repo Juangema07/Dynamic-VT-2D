@@ -625,15 +625,23 @@ class AvatarOverlayService : LifecycleService() {
         }
         radialButton("✕", "Cerrar menú", Gravity.TOP or Gravity.END) { hideMenu() }
 
-        val panel = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.TOP
-            setPadding(dp(10), dp(8), dp(10), dp(8))
+        val panel = FrameLayout(this).apply {
             background = rounded(Color.argb(238, 20, 23, 32), dp(16))
             elevation = dp(8).toFloat()
-            clipToPadding = false
         }
-        menuContent = panel
+        val panelScroll = ScrollView(this).apply {
+            isFillViewport = true
+            isVerticalScrollBarEnabled = true
+            clipToPadding = false
+            setPadding(dp(8), dp(6), dp(8), dp(6))
+        }
+        val panelContent = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.TOP
+        }
+        menuContent = panelContent
+        panelScroll.addView(panelContent, ScrollView.LayoutParams(-1, -2))
+        panel.addView(panelScroll, FrameLayout.LayoutParams(-1, -1))
         val panelParams = FrameLayout.LayoutParams(-1, dp(224), Gravity.BOTTOM)
         panelParams.setMargins(dp(4), 0, dp(4), dp(4))
         root.addView(panel, panelParams)
