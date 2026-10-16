@@ -1016,7 +1016,7 @@ class AvatarOverlayService : LifecycleService() {
                 putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "es-CO")
                 putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 5)
                 putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
-                putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
+                putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, false)
             }
             recognizer.startListening(intent)
             Toast.makeText(this, "Escuchando comando de voz…", Toast.LENGTH_SHORT).show()
