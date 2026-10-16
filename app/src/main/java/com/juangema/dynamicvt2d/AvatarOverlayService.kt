@@ -1008,7 +1008,8 @@ class AvatarOverlayService : LifecycleService() {
             command.contains("desbloquear") || command.contains("bloquear") ||
             command.contains("activar camara") || command.contains("iniciar camara") ||
             command.contains("seguimiento facial") || command.contains("detener camara") ||
-            command.contains("apagar camara")) return true
+            command.contains("apagar camara") || command.contains("detener live") ||
+            command.contains("parar live") || command.contains("cerrar live")) return true
         return AvatarStore.load(this).any { normalize(it.name).let { n -> n.isNotBlank() && command.contains(n) } }
     }
 
@@ -1046,6 +1047,11 @@ class AvatarOverlayService : LifecycleService() {
             command.contains("detener camara") || command.contains("apagar camara") -> {
                 stopCameraTracking()
                 if (menuVisible) updateMenuContent()
+                return
+            }
+            command.contains("detener live") || command.contains("parar live") ||
+                command.contains("cerrar live") -> {
+                stopSelf()
                 return
             }
         }
