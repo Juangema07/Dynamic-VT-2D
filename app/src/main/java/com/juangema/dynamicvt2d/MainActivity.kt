@@ -3,6 +3,7 @@ package com.juangema.dynamicvt2d
 import android.Manifest
 import android.app.Activity
 import android.media.projection.MediaProjectionManager
+import android.media.projection.MediaProjectionConfig
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -166,7 +167,14 @@ class MainActivity : ComponentActivity() {
 
     private fun launchScreenCaptureConsent() {
         val manager = getSystemService(MediaProjectionManager::class.java)
-        recordingConsentLauncher.launch(manager.createScreenCaptureIntent())
+        // The avatar is a system overlay, so the recorder must target the full display.
+        // Android 14+ otherwise lets the user choose a single app window that may exclude the avatar.
+        val captureIntent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            manager.createScreenCaptureIntent(MediaProjectionConfig.createConfigForDefaultDisplay())
+        } else {
+            manager.createScreenCaptureIntent()
+        }
+        recordingConsentLauncher.launch(captureIntent)
     }
 
     private fun activateLive() {
