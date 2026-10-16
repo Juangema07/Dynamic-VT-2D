@@ -287,7 +287,7 @@ private fun StudioScreen(
             label = { Text("Nombre: Neutro, Feliz, Confundido…") },
             singleLine = true
         )
-        Button(onClick = { imagePicker.launch(arrayOf("image/png", "image/*")) }, modifier = Modifier.fillMaxWidth()) {
+        Button(onClick = { imagePicker.launch(arrayOf("image/png")) }, modifier = Modifier.fillMaxWidth()) {
             Text("Importar 4 imágenes PNG")
         }
         Text("Selecciona en este orden: 1) ojos abiertos + boca cerrada, 2) ojos abiertos + boca abierta, 3) ojos cerrados + boca cerrada, 4) ojos cerrados + boca abierta.", color = Color(0xFFBFC7DA), fontSize = 12.sp)
