@@ -1,6 +1,8 @@
 package com.juangema.dynamicvt2d
 
 import android.Manifest
+import android.app.Activity
+import android.media.projection.MediaProjectionManager
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -99,9 +101,24 @@ object AvatarStore {
 
 class MainActivity : ComponentActivity() {
     private lateinit var runtimePermissionLauncher: ActivityResultLauncher<Array<String>>
+    private lateinit var recordingConsentLauncher: ActivityResultLauncher<Intent>
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        recordingConsentLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+            val data = result.data
+            if (result.resultCode == Activity.RESULT_OK && data != null) {
+                val recordingIntent = Intent(this, ScreenRecordingService::class.java).apply {
+                    action = ScreenRecordingService.ACTION_START
+                    putExtra(ScreenRecordingService.EXTRA_RESULT_CODE, result.resultCode)
+                    putExtra(ScreenRecordingService.EXTRA_RESULT_DATA, data)
+                }
+                runCatching { ContextCompat.startForegroundService(this, recordingIntent) }
+                    .onFailure { Toast.makeText(this, "No se pudo iniciar la grabación.", Toast.LENGTH_LONG).show() }
+            } else {
+                Toast.makeText(this, "Grabación cancelada: Android no concedió permiso de captura.", Toast.LENGTH_SHORT).show()
+            }
+        }
         runtimePermissionLauncher = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { grants ->
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED &&
                 ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
@@ -117,7 +134,9 @@ class MainActivity : ComponentActivity() {
                         onLive = { activateLive() },
                         onStop = { stopService(Intent(this, AvatarOverlayService::class.java)) },
                         onPermission = { openOverlaySettings() },
-                        onApply = { activateLive() }
+                        onApply = { activateLive() },
+                        onStartRecording = { requestScreenRecording() },
+                        onStopRecording = { stopService(Intent(this, ScreenRecordingService::class.java).setAction(ScreenRecordingService.ACTION_STOP)) }
                     )
                 }
             }
@@ -126,6 +145,15 @@ class MainActivity : ComponentActivity() {
 
     private fun openOverlaySettings() {
         startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:" + packageName)))
+    }
+
+    private fun requestScreenRecording() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            Toast.makeText(this, "La grabación MP4 integrada requiere Android 10 o posterior.", Toast.LENGTH_LONG).show()
+            return
+        }
+        val manager = getSystemService(MediaProjectionManager::class.java)
+        recordingConsentLauncher.launch(manager.createScreenCaptureIntent())
     }
 
     private fun activateLive() {
@@ -156,7 +184,9 @@ private fun StudioScreen(
     onLive: () -> Unit,
     onStop: () -> Unit,
     onPermission: () -> Unit,
-    onApply: () -> Unit
+    onApply: () -> Unit,
+    onStartRecording: () -> Unit,
+    onStopRecording: () -> Unit
 ) {
     val context = LocalContext.current
     var expressions by remember { mutableStateOf(AvatarStore.load(context)) }
@@ -294,6 +324,11 @@ private fun StudioScreen(
         OutlinedButton(onClick = onApply, modifier = Modifier.fillMaxWidth()) { Text("Aplicar ajustes al LIVE") }
         OutlinedButton(onClick = onStop, modifier = Modifier.fillMaxWidth()) { Text("Detener avatar flotante") }
         OutlinedButton(onClick = onPermission, modifier = Modifier.fillMaxWidth()) { Text("Permiso para mostrarse sobre otras apps") }
+
+        Text("4. GRABACIÓN DE PANTALLA", color = Color(0xFF8FA7FF), fontWeight = FontWeight.Bold)
+        Button(onClick = onStartRecording, modifier = Modifier.fillMaxWidth()) { Text("● Iniciar grabación MP4") }
+        OutlinedButton(onClick = onStopRecording, modifier = Modifier.fillMaxWidth()) { Text("■ Detener y guardar grabación") }
+        Text("Android pedirá autorización antes de grabar. El MP4 se guarda en Películas/Dynamic VT-2D. La captura estándar puede incluir otras ventanas visibles; Android no ofrece una API pública universal para excluir solo el menú del video y mantenerlo visible en pantalla.", color = Color(0xFFBFC7DA), fontSize = 12.sp)
 
         Text("En LIVE: doble toque para abrir/cerrar el panel privado. La cámara frontal detecta ojos y movimiento de boca; el panel incluye comandos de voz, modo lista/circular y bloqueo.", color = Color(0xFFBFC7DA), fontSize = 12.sp)
     }
