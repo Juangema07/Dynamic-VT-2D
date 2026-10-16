@@ -102,9 +102,14 @@ object AvatarStore {
 class MainActivity : ComponentActivity() {
     private lateinit var runtimePermissionLauncher: ActivityResultLauncher<Array<String>>
     private lateinit var recordingConsentLauncher: ActivityResultLauncher<Intent>
+    private lateinit var recordingAudioPermissionLauncher: ActivityResultLauncher<String>
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        recordingAudioPermissionLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            if (granted) launchScreenCaptureConsent()
+            else Toast.makeText(this, "Concede el permiso de micrófono para incluir tu voz en el MP4.", Toast.LENGTH_LONG).show()
+        }
         recordingConsentLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
             val data = result.data
             if (result.resultCode == Activity.RESULT_OK && data != null) {
@@ -152,6 +157,14 @@ class MainActivity : ComponentActivity() {
             Toast.makeText(this, "La grabación MP4 integrada requiere Android 10 o posterior.", Toast.LENGTH_LONG).show()
             return
         }
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            recordingAudioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+            return
+        }
+        launchScreenCaptureConsent()
+    }
+
+    private fun launchScreenCaptureConsent() {
         val manager = getSystemService(MediaProjectionManager::class.java)
         recordingConsentLauncher.launch(manager.createScreenCaptureIntent())
     }
