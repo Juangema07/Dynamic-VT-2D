@@ -937,17 +937,19 @@ class AvatarOverlayService : LifecycleService() {
             speechRecognizer = recognizer
             recognizer.setRecognitionListener(object : RecognitionListener {
                 override fun onReadyForSpeech(params: android.os.Bundle?) {
+                    if (speechRecognizer !== recognizer) return
                     voiceMouthOpen = false
                     voiceLevelActive = false
                     setSpeakingMotion(false)
                     renderFrame()
                 }
                 override fun onBeginningOfSpeech() {
+                    if (speechRecognizer !== recognizer) return
                     voiceLevelActive = true
                     setSpeakingMotion(true)
                 }
                 override fun onRmsChanged(rmsdB: Float) {
-                    if (!voiceLevelActive) return
+                    if (speechRecognizer !== recognizer || !voiceLevelActive) return
                     val speaking = rmsdB >= VOICE_MOUTH_OPEN_RMS
                     if (speaking != voiceMouthOpen) {
                         voiceMouthOpen = speaking
@@ -957,12 +959,14 @@ class AvatarOverlayService : LifecycleService() {
                 }
                 override fun onBufferReceived(buffer: ByteArray?) {}
                 override fun onEndOfSpeech() {
+                    if (speechRecognizer !== recognizer) return
                     voiceLevelActive = false
                     voiceMouthOpen = false
                     setSpeakingMotion(false)
                     renderFrame()
                 }
                 override fun onError(error: Int) {
+                    if (speechRecognizer !== recognizer) return
                     voiceMouthOpen = false
                     setSpeakingMotion(false)
                     renderFrame()
@@ -973,6 +977,7 @@ class AvatarOverlayService : LifecycleService() {
                     }
                 }
                 override fun onResults(results: android.os.Bundle?) {
+                    if (speechRecognizer !== recognizer) return
                     voiceMouthOpen = false
                     setSpeakingMotion(false)
                     renderFrame()
