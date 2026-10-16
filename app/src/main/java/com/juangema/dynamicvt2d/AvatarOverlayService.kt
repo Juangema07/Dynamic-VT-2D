@@ -1148,6 +1148,11 @@ class AvatarOverlayService : LifecycleService() {
         speechRecognizer?.cancel()
         speechRecognizer?.destroy()
         speechRecognizer = null
+        // Invalidate a pending CameraX provider callback before tearing down this LifecycleService.
+        // Otherwise a late callback could attempt to bind the camera after LIVE has been destroyed.
+        cameraStartGeneration++
+        cameraStartInFlight = false
+        cameraEnabled = false
         runCatching { cameraProvider?.unbindAll() }
         cameraProvider = null
         faceDetector?.close()
